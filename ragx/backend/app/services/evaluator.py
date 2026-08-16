@@ -215,11 +215,12 @@ class EvidenceMatcher:
             has_q_token_overlap = any(t in c_tokens for t in q_tokens) if q_tokens else True
 
             if support_status == "SUPPORTED":
-                if q_rel_score >= 0.40 or has_q_token_overlap:
+                if has_q_token_overlap or q_rel_score >= 0.65:
                     relevance_classification = "SUPPORTED_RELEVANT"
                 else:
                     relevance_classification = "SUPPORTED_IRRELEVANT"
                     disparity_detail += " Note: Claim exists in source but is IRRELEVANT to the user's specific question (Over-generation)."
+
             elif support_status == "CONTRADICTED":
                 relevance_classification = "CONTRADICTED"
             else:
@@ -506,7 +507,8 @@ class AnswerEvaluator:
         n_irrel_supp = sum(1 for c in claims_analysis if c.get("relevance_classification") == "SUPPORTED_IRRELEVANT")
 
         # Division-by-zero safe sub-scores
-        s_supp = round((n_supp / tot_claims) * 100.0, 1) if tot_claims > 0 else 0.0
+        s_supp = round((n_rel_supp / tot_claims) * 100.0, 1) if tot_claims > 0 else 0.0
+
         s_cov = round((n_cov / tot_claims) * 100.0, 1) if tot_claims > 0 else 0.0
         s_sim = round(avg_retrieval_sim * 100.0, 1)
 

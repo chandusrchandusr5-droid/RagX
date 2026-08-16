@@ -3,15 +3,7 @@
   "outputDirectory": "ragx/frontend/dist",
   "rewrites": [
     {
-      "source": "/api/documents",
-      "destination": "/api/documents.js"
-    },
-    {
-      "source": "/api/quality/audit",
-      "destination": "/api/quality.js"
-    },
-    {
-      "source": "/((?!api/).*)",
+      "source": "/(.*)",
       "destination": "/index.html"
     }
   ]
