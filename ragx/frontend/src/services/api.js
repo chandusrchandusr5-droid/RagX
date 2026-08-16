@@ -1,27 +1,27 @@
 import axios from 'axios';
 
-const LIVE_BACKEND_URL = 'https://violet-taxes-warn.loca.lt';
+const LIVE_BACKEND_URL = 'https://ragx-api-prod.loca.lt';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL 
   ? `${import.meta.env.VITE_API_URL.replace(/\/$/, '')}/api` 
   : `${LIVE_BACKEND_URL}/api`;
 
-
-
-
-
-// Configure default headers for LocalTunnel bypass
-axios.defaults.headers.common['Bypass-Tunnel-Remainder'] = 'true';
-axios.defaults.headers.common['bypass-tunnel-reminder'] = 'true';
-
-
-
+const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Bypass-Tunnel-Remainder': 'true',
+    'bypass-tunnel-reminder': 'true',
+  },
+  params: {
+    'bypass-tunnel-reminder': 'true'
+  }
+});
 
 export const uploadDocument = async (file) => {
   const formData = new FormData();
   formData.append('file', file);
 
-  const response = await axios.post(`${API_BASE_URL}/documents/upload`, formData, {
+  const response = await apiClient.post('/documents/upload', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
@@ -32,47 +32,47 @@ export const uploadDocument = async (file) => {
 
 export const fetchDocuments = async (status = null) => {
   const params = status ? { status } : {};
-  const response = await axios.get(`${API_BASE_URL}/documents`, { params });
+  const response = await apiClient.get('/documents', { params });
   return response.data;
 };
 
 export const viewDocumentUrl = (documentId) => {
-  return `${API_BASE_URL}/documents/${encodeURIComponent(documentId)}/view`;
+  return `${API_BASE_URL}/documents/${encodeURIComponent(documentId)}/view?bypass-tunnel-reminder=true`;
 };
 
 export const softDeleteDocument = async (documentId) => {
-  const response = await axios.delete(`${API_BASE_URL}/documents/${encodeURIComponent(documentId)}`);
+  const response = await apiClient.delete(`/documents/${encodeURIComponent(documentId)}`);
   return response.data;
 };
 
 export const restoreDocument = async (documentId) => {
-  const response = await axios.post(`${API_BASE_URL}/documents/${encodeURIComponent(documentId)}/restore`);
+  const response = await apiClient.post(`/documents/${encodeURIComponent(documentId)}/restore`);
   return response.data;
 };
 
 export const permanentlyDeleteDocument = async (documentId) => {
-  const response = await axios.delete(`${API_BASE_URL}/documents/${encodeURIComponent(documentId)}/permanent`);
+  const response = await apiClient.delete(`/documents/${encodeURIComponent(documentId)}/permanent`);
   return response.data;
 };
+
 
 
 
 export const queryRag = async (question, topK = 3) => {
-  const response = await axios.post(`${API_BASE_URL}/rag/query`, {
+  const response = await apiClient.post('/rag/query', {
     question,
     top_k: topK,
   });
-
   return response.data;
 };
 
 export const fetchQualityAudit = async () => {
-  const response = await axios.get(`${API_BASE_URL}/quality/audit`);
+  const response = await apiClient.get('/quality/audit');
   return response.data;
 };
 
 export const evaluateAnswer = async (query, answer, retrievedEvidence = []) => {
-  const response = await axios.post(`${API_BASE_URL}/evaluator/evaluate`, {
+  const response = await apiClient.post('/evaluator/evaluate', {
     query,
     answer,
     retrieved_evidence: retrievedEvidence,
@@ -81,7 +81,7 @@ export const evaluateAnswer = async (query, answer, retrievedEvidence = []) => {
 };
 
 export const queryAndEvaluateRag = async (question, topK = 3) => {
-  const response = await axios.post(`${API_BASE_URL}/evaluator/query-and-evaluate`, {
+  const response = await apiClient.post('/evaluator/query-and-evaluate', {
     question,
     top_k: topK,
   });
@@ -89,26 +89,27 @@ export const queryAndEvaluateRag = async (question, topK = 3) => {
 };
 
 export const fetchEvaluationAnalytics = async () => {
-  const response = await axios.get(`${API_BASE_URL}/evaluator/analytics`);
+  const response = await apiClient.get('/evaluator/analytics');
   return response.data;
 };
 
 export const fetchEvaluationHistory = async (limit = 50) => {
-  const response = await axios.get(`${API_BASE_URL}/evaluator/history?limit=${limit}`);
+  const response = await apiClient.get(`/evaluator/history?limit=${limit}`);
   return response.data;
 };
 
 export const fetchNovaGreeting = async () => {
-  const response = await axios.get(`${API_BASE_URL}/nova/greeting`);
+  const response = await apiClient.get('/nova/greeting');
   return response.data;
 };
 
 export const sendNovaMessage = async (message, contextPage = 'general') => {
-  const response = await axios.post(`${API_BASE_URL}/nova/chat`, {
+  const response = await apiClient.post('/nova/chat', {
     message,
     context_page: contextPage,
   });
   return response.data;
 };
+
 
 
