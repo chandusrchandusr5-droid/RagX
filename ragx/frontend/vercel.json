@@ -2,25 +2,18 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
-  "routes": [
+  "rewrites": [
     {
-      "src": "/api/documents",
-      "dest": "/api/documents.py"
+      "source": "/api/documents",
+      "destination": "/api/documents.js"
     },
     {
-      "src": "/api/quality/(.*)",
-      "dest": "/api/quality.py"
+      "source": "/api/quality/audit",
+      "destination": "/api/quality.js"
     },
     {
-      "src": "/api/(.*)",
-      "dest": "/api/index.py"
-    },
-    {
-      "handle": "filesystem"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
     }
   ]
 }
