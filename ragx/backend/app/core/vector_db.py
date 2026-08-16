@@ -13,15 +13,29 @@ DEFAULT_STOPWORDS = {
     "by", "from", "about", "regarding", "tell", "me", "show", "give", "list", "does", "do"
 }
 
+_shared_embedding_model = None
+
+def get_shared_embedding_model():
+    global _shared_embedding_model
+    if _shared_embedding_model is None:
+        logger.info(f"Lazy-loading SentenceTransformer model: {settings.EMBEDDING_MODEL_NAME}")
+        from sentence_transformers import SentenceTransformer
+        _shared_embedding_model = SentenceTransformer(settings.EMBEDDING_MODEL_NAME)
+    return _shared_embedding_model
+
 class VectorDBManager:
     def __init__(self):
         logger.info(f"Initializing ChromaDB client at {settings.CHROMA_DIR}")
         self.client = chromadb.PersistentClient(path=str(settings.CHROMA_DIR))
-        self.embedding_model = SentenceTransformer(settings.EMBEDDING_MODEL_NAME)
         self.collection = self.client.get_or_create_collection(
             name=settings.COLLECTION_NAME,
             metadata={"hnsw:space": "cosine"}
         )
+
+    @property
+    def embedding_model(self):
+        return get_shared_embedding_model()
+
 
     def get_embedding(self, text: str) -> list[float]:
         return self.embedding_model.encode(text).tolist()

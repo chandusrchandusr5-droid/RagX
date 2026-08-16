@@ -8,23 +8,17 @@ import logging
 import numpy as np
 from datetime import datetime
 from pathlib import Path
-from sentence_transformers import SentenceTransformer
 from app.core.config import settings
-from app.core.vector_db import vector_db
+from app.core.vector_db import vector_db, get_shared_embedding_model
 from app.services.data_quality import DataQualityService
 from app.services.evaluation_history import EvaluationHistoryService
 
 logger = logging.getLogger("ragx.evaluator")
 
 
-# Shared embedding model instance for deterministic evaluation similarity matching
-_embedding_model = None
-
 def get_embedding_model():
-    global _embedding_model
-    if _embedding_model is None:
-        _embedding_model = SentenceTransformer(settings.EMBEDDING_MODEL_NAME)
-    return _embedding_model
+    return get_shared_embedding_model()
+
 
 
 class ClaimExtractor:
