@@ -1,6 +1,11 @@
 {
   "buildCommand": "cd ragx/frontend && npm install && npm run build",
   "outputDirectory": "ragx/frontend/dist",
+  "functions": {
+    "api/**/*.py": {
+      "memory": 1024
+    }
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",
