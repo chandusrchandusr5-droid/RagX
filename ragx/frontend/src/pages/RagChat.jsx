@@ -87,7 +87,8 @@ export default function RagChat() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+    <div className="max-w-[1500px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+
       {/* Header Banner */}
       <div className="border-b border-slate-800 pb-5">
         <h1 className="text-2xl font-bold text-white flex items-center gap-2">

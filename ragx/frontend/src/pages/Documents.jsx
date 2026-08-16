@@ -150,7 +150,8 @@ export default function Documents() {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="space-y-6 max-w-[1700px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
       {/* Header Banner */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-5">
         <div>
@@ -267,7 +268,7 @@ export default function Documents() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {displayedDocs.map((doc) => (
 
               <div key={doc.document_id} className="glass-card p-5 rounded-xl space-y-4 flex flex-col justify-between border border-slate-800 hover:border-slate-700 transition">
@@ -278,7 +279,8 @@ export default function Documents() {
                         <FileText className="w-5 h-5" />
                       </div>
                       <div>
-                        <h4 className="text-sm font-semibold text-white truncate max-w-[170px]" title={doc.document_name}>
+                        <h4 className="text-sm font-semibold text-white truncate max-w-[220px]" title={doc.document_name}>
+
                           {doc.document_name}
                         </h4>
                         <p className="text-[11px] text-slate-400">{doc.file_size} • ID: {doc.document_id.slice(0, 10)}...</p>

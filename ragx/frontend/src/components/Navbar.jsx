@@ -20,7 +20,8 @@ export default function Navbar({ activeTab, setActiveTab }) {
 
   return (
     <header className="sticky top-0 z-50 glass-panel border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-md">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-[1700px] w-full mx-auto px-4 sm:px-6 lg:px-8">
+
         <div className="flex items-center justify-between h-16">
           {/* Logo & Branding */}
           <div className="flex items-center space-x-3">
