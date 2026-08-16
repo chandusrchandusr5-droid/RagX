@@ -2,9 +2,8 @@ import axios from 'axios';
 
 const LIVE_BACKEND_URL = 'https://niagara-aims-opera-terrorism.trycloudflare.com';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL 
-  ? `${import.meta.env.VITE_API_URL.replace(/\/$/, '')}/api` 
-  : `${LIVE_BACKEND_URL}/api`;
+const API_BASE_URL = `${LIVE_BACKEND_URL}/api`;
+
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
