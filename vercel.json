@@ -1,0 +1,10 @@
+{
+  "buildCommand": "cd ragx/frontend && npm install && npm run build",
+  "outputDirectory": "ragx/frontend/dist",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

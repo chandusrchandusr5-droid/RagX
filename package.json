@@ -1,0 +1,8 @@
+{
+  "name": "ragx-root",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "build": "cd ragx/frontend && npm install && npm run build"
+  }
+}
