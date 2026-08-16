@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const LIVE_BACKEND_URL = 'https://ragx-api-prod.loca.lt';
+const LIVE_BACKEND_URL = 'https://niagara-aims-opera-terrorism.trycloudflare.com';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL 
   ? `${import.meta.env.VITE_API_URL.replace(/\/$/, '')}/api` 
@@ -8,14 +8,8 @@ const API_BASE_URL = import.meta.env.VITE_API_URL
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  headers: {
-    'Bypass-Tunnel-Remainder': 'true',
-    'bypass-tunnel-reminder': 'true',
-  },
-  params: {
-    'bypass-tunnel-reminder': 'true'
-  }
 });
+
 
 export const uploadDocument = async (file) => {
   const formData = new FormData();
@@ -37,8 +31,9 @@ export const fetchDocuments = async (status = null) => {
 };
 
 export const viewDocumentUrl = (documentId) => {
-  return `${API_BASE_URL}/documents/${encodeURIComponent(documentId)}/view?bypass-tunnel-reminder=true`;
+  return `${API_BASE_URL}/documents/${encodeURIComponent(documentId)}/view`;
 };
+
 
 export const softDeleteDocument = async (documentId) => {
   const response = await apiClient.delete(`/documents/${encodeURIComponent(documentId)}`);
