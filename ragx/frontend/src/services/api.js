@@ -1,13 +1,11 @@
 import axios from 'axios';
 
-const LIVE_BACKEND_URL = 'https://niagara-aims-opera-terrorism.trycloudflare.com';
-
-const API_BASE_URL = `${LIVE_BACKEND_URL}/api`;
-
+const API_BASE_URL = '/api';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
 });
+
 
 
 export const uploadDocument = async (file) => {

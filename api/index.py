@@ -48,8 +48,9 @@ def health_check():
 @app.get("/api/documents")
 def get_documents(status: str = "ACTIVE"):
     if status == "DELETED":
-        return []
-    return SAMPLE_DOCUMENTS
+        return {"total_documents": 0, "documents": []}
+    return {"total_documents": len(SAMPLE_DOCUMENTS), "documents": SAMPLE_DOCUMENTS}
+
 
 @app.get("/api/quality/audit")
 def get_quality_audit():
