@@ -1,0 +1,22 @@
+# Python virtual environment
+venv/
+ENV/
+env/
+.venv/
+
+# Node modules
+node_modules/
+dist/
+build/
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# OS / IDE files
+.DS_Store
+.vscode/
+.idea/
+*.log
