@@ -43,10 +43,11 @@ class Settings:
     WEIGHT_CONSISTENCY: float = 0.35
     CHUNK_DUPLICATE_THRESHOLD: float = 0.90
     
-    # Phase 3 RAG Answer Reliability Evaluator Weights
-    WEIGHT_CLAIM_SUPPORT: float = 0.50
-    WEIGHT_CITATION_COVERAGE: float = 0.25
-    WEIGHT_RETRIEVAL_SIMILARITY: float = 0.25
+    # Phase 3 RAG Answer Reliability Evaluator Weights (Fix D Recalibrated)
+    WEIGHT_CLAIM_SUPPORT: float = 0.60
+    WEIGHT_CITATION_COVERAGE: float = 0.20
+    WEIGHT_RETRIEVAL_SIMILARITY: float = 0.20
+
 
     
     # LLM Settings (Ollama local / fallback API)

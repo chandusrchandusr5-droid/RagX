@@ -121,18 +121,19 @@ class FullKBRetrievalOracle:
 class EvidenceMatcher:
     """
     Evaluates each claim against retrieved Top-K evidence chunks using embedding similarity and numeric verification.
+    Distinguishes Question Relevance (SUPPORTED_RELEVANT vs SUPPORTED_IRRELEVANT over-generation) from Factual Support.
     Strictly verifies 5-tuple citation traceability:
     claim -> evidence_chunk -> chunk_id -> document_name -> page_number.
     """
     @staticmethod
-    def match_claims_to_evidence(claims: list[dict], retrieved_chunks: list[dict]) -> tuple[list[dict], float]:
+    def match_claims_to_evidence(claims: list[dict], retrieved_chunks: list[dict], query: str = None) -> tuple[list[dict], float]:
         if not claims or not retrieved_chunks:
             return claims, 0.0
 
         model = get_embedding_model()
         num_pattern = re.compile(r'\d{1,3}%|\d{1,3}\s*marks|\d{1,3}\s*percent')
 
-        # Encode claim embeddings and chunk embeddings
+        # Encode claim embeddings, chunk embeddings, and query embedding
         claim_texts = [c["claim_text"] for c in claims]
         chunk_texts = [c.get("text", "") for c in retrieved_chunks]
 
@@ -143,17 +144,27 @@ class EvidenceMatcher:
         claim_norms = claim_embs / (np.linalg.norm(claim_embs, axis=1, keepdims=True) + 1e-9)
         chunk_norms = chunk_embs / (np.linalg.norm(chunk_embs, axis=1, keepdims=True) + 1e-9)
 
+        # Query embedding for Question Relevance check
+        if query:
+            q_emb = model.encode(query, convert_to_numpy=True)
+            q_norm = q_emb / (np.linalg.norm(q_emb) + 1e-9)
+            q_rel_sims = np.dot(claim_norms, q_norm)
+        else:
+            q_rel_sims = np.ones(len(claims))
+
         # Cosine similarity matrix: N_claims x N_chunks
         sim_matrix = np.dot(claim_norms, chunk_norms.T)
 
         matched_claims = []
         all_top_sims = []
 
+        stopwords = {"who", "is", "a", "an", "the", "what", "where", "when", "why", "how", "are", "was", "were", "of", "in", "for", "to", "on", "with", "at", "by", "from", "about", "obtained", "marks", "score", "total"}
+        q_tokens = [w.lower() for w in re.findall(r'\w+', query) if w.lower() not in stopwords] if query else []
+
         for i, claim in enumerate(claims):
             c_text = claim["claim_text"]
             best_chunk_idx = int(np.argmax(sim_matrix[i]))
             best_sim = float(sim_matrix[i, best_chunk_idx])
-            all_top_sims.append(best_sim)
 
             best_chunk = retrieved_chunks[best_chunk_idx]
             ev_text = best_chunk.get("text", "")
@@ -161,11 +172,28 @@ class EvidenceMatcher:
             doc_name = best_chunk.get("document_name", "Unknown")
             page_num = best_chunk.get("page_number", 1)
 
+            # Direct Substring Containment Check for exact textual evidence match
+            if ":" in c_text and "page" in c_text.lower()[:30]:
+                c_text_clean = c_text.split(":", 1)[1].strip()
+            else:
+                c_text_clean = c_text.strip()
+
+            clean_c = re.sub(r'[^a-z0-9]', '', c_text_clean.lower())
+            clean_ev = re.sub(r'[^a-z0-9]', '', ev_text.lower())
+
+            if clean_c and len(clean_c) >= 8 and (clean_c in clean_ev or clean_c[:30] in clean_ev):
+                best_sim = max(best_sim, 0.90)
+
+
+            all_top_sims.append(best_sim)
+
+
+
             # Extract numeric figures for numeric disparity check
             claim_nums = num_pattern.findall(c_text.lower())
             ev_nums = num_pattern.findall(ev_text.lower())
 
-            # Determine Support Status
+            # Determine Factual Support Status
             if claim_nums and ev_nums and set(claim_nums) != set(ev_nums) and best_sim >= 0.60:
                 support_status = "CONTRADICTED"
                 disparity_detail = f"Claim mentions '{', '.join(claim_nums)}' while evidence states '{', '.join(ev_nums)}'."
@@ -178,6 +206,24 @@ class EvidenceMatcher:
             else:
                 support_status = "UNSUPPORTED"
                 disparity_detail = "Low semantic similarity to retrieved evidence context."
+
+            # Determine Question Relevance & Classification Layer
+            q_rel_score = float(q_rel_sims[i]) if query else 1.0
+            
+            # Token match check for question relevance
+            c_tokens = set(w.lower() for w in re.findall(r'\w+', c_text))
+            has_q_token_overlap = any(t in c_tokens for t in q_tokens) if q_tokens else True
+
+            if support_status == "SUPPORTED":
+                if q_rel_score >= 0.40 or has_q_token_overlap:
+                    relevance_classification = "SUPPORTED_RELEVANT"
+                else:
+                    relevance_classification = "SUPPORTED_IRRELEVANT"
+                    disparity_detail += " Note: Claim exists in source but is IRRELEVANT to the user's specific question (Over-generation)."
+            elif support_status == "CONTRADICTED":
+                relevance_classification = "CONTRADICTED"
+            else:
+                relevance_classification = "UNSUPPORTED"
 
             # Verify strict 5-tuple citation traceability:
             # claim -> evidence_chunk -> chunk_id -> document_name -> page_number
@@ -193,6 +239,8 @@ class EvidenceMatcher:
                 "claim_id": claim["claim_id"],
                 "claim_text": c_text,
                 "support_status": support_status,
+                "relevance_classification": relevance_classification,
+                "question_relevance_score": round(q_rel_score, 4),
                 "citation_traceable": has_5_tuple,
                 "matched_evidence": {
                     "source_file": doc_name,
@@ -206,6 +254,7 @@ class EvidenceMatcher:
 
         avg_retrieval_sim = float(np.mean(all_top_sims)) if all_top_sims else 0.0
         return matched_claims, round(avg_retrieval_sim, 4)
+
 
 
 class Phase2CrossReferencer:
@@ -424,7 +473,7 @@ class AnswerEvaluator:
         # -------------------------------------------------------------
         # STEP 2: Claim-Level Evidence Matching & Traceability
         # -------------------------------------------------------------
-        claims_analysis, avg_retrieval_sim = EvidenceMatcher.match_claims_to_evidence(claims, retrieved_evidence)
+        claims_analysis, avg_retrieval_sim = EvidenceMatcher.match_claims_to_evidence(claims, retrieved_evidence, query=query)
 
         # -------------------------------------------------------------
         # STEP 3: Phase 2 Issue Cross-Referencing
@@ -453,6 +502,8 @@ class AnswerEvaluator:
         tot_claims = len(claims_analysis)
         n_supp = sum(1 for c in claims_analysis if c["support_status"] == "SUPPORTED")
         n_cov = sum(1 for c in claims_analysis if c.get("citation_traceable", False))
+        n_rel_supp = sum(1 for c in claims_analysis if c.get("relevance_classification") == "SUPPORTED_RELEVANT")
+        n_irrel_supp = sum(1 for c in claims_analysis if c.get("relevance_classification") == "SUPPORTED_IRRELEVANT")
 
         # Division-by-zero safe sub-scores
         s_supp = round((n_supp / tot_claims) * 100.0, 1) if tot_claims > 0 else 0.0
@@ -466,16 +517,28 @@ class AnswerEvaluator:
         composite_score = round((w_supp * s_supp) + (w_cov * s_cov) + (w_sim * s_sim), 1)
         composite_score = max(0.0, min(100.0, composite_score))
 
-        # Status Classification
-        if composite_score >= 85.0:
-            rel_status = "HIGHLY_RELIABLE"
-            h_risk = "LOW"
-        elif composite_score >= 65.0:
-            rel_status = "PARTIALLY_RELIABLE"
+        # Status & Hallucination Risk Classification (Fix D Recalibrated)
+        n_unsupp = sum(1 for c in claims_analysis if c["support_status"] == "UNSUPPORTED")
+        n_contradict = sum(1 for c in claims_analysis if c["support_status"] == "CONTRADICTED")
+
+        # Hallucination Risk strictly measures factual fabrication / contradiction
+        if n_contradict > 0 or (tot_claims > 0 and (n_unsupp / tot_claims) > 0.33):
+            h_risk = "HIGH"
+        elif n_unsupp > 0:
             h_risk = "MEDIUM"
         else:
+            h_risk = "LOW"
+
+        # Reliability Status Bounded Thresholds
+        if composite_score >= 80.0:
+            rel_status = "HIGHLY_RELIABLE"
+        elif composite_score >= 60.0:
+            rel_status = "PARTIALLY_RELIABLE"
+        else:
             rel_status = "UNRELIABLE"
-            h_risk = "HIGH"
+
+        over_gen_risk = "MODERATE" if n_irrel_supp > 0 else "NONE"
+
 
         report = {
             "evaluation_id": eval_id,
@@ -487,10 +550,16 @@ class AnswerEvaluator:
             "reliability_status": rel_status,
             "failure_category": failure_category,
             "hallucination_risk": h_risk,
+            "over_generation_risk": over_gen_risk,
+            "over_generation_detected": n_irrel_supp > 0,
+
+            "over_generation_claims_count": n_irrel_supp,
             "scoring_breakdown": {
                 "raw_measurements": {
                     "total_claims": tot_claims,
                     "supported_claims": n_supp,
+                    "supported_relevant_claims": n_rel_supp,
+                    "supported_irrelevant_claims": n_irrel_supp,
                     "citation_covered_claims": n_cov,
                     "top_k_chunks_retrieved": len(retrieved_evidence),
                     "average_retrieval_similarity": avg_retrieval_sim,
@@ -515,6 +584,7 @@ class AnswerEvaluator:
             },
             "phase2_cross_references": phase2_refs
         }
+
         EvaluationHistoryService.log_evaluation_run(report, history_file_path=history_file_path)
 
         return report

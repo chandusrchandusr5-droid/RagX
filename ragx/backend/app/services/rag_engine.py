@@ -70,20 +70,28 @@ class RAGEngine:
     @staticmethod
     def generate_llm_response(question: str, context_chunks: list[dict]) -> str:
         """
-        Calls Ollama if available, otherwise performs structured synthesis from retrieved context.
+        Calls Ollama if available, otherwise performs query-aware structured synthesis from retrieved context.
         """
         context_str = "\n\n".join(
             [f"[Source: {c['document_name']}, Page {c['page_number']}]\n{c['text']}" for c in context_chunks]
         )
 
-        prompt = f"""You are a helpful AI assistant. Answer the user's question accurately based ONLY on the provided context below. 
+        prompt = f"""You are a helpful and concise AI assistant. Answer the user's question accurately and concisely based ONLY on the provided context below.
+
+CRITICAL INSTRUCTIONS:
+1. Answer ONLY what the user explicitly asked in the Question.
+2. Use ONLY facts directly stated in the Context below. Do NOT assume, extrapolate, or invent information.
+3. If the question asks about a specific subject, field, item, or score, return ONLY that specific item. Do NOT list unrelated subjects, rows, or document summaries unless explicitly asked.
+4. If the requested information is not present in the context, clearly state "The requested information could not be found in the provided document context."
+5. Preserve exact numbers, percentages, and marks as stated in the source text.
+6. Keep the response concise when the question is narrow.
 
 Context:
 {context_str}
 
 Question: {question}
 
-Answer clearly and concisely based strictly on the context above:"""
+Answer clearly, concisely, and specifically based strictly on the context above:"""
 
         # Try local Ollama endpoint first if enabled
         if settings.USE_OLLAMA:
@@ -99,41 +107,79 @@ Answer clearly and concisely based strictly on the context above:"""
                 )
                 if response.status_code == 200:
                     res_json = response.json()
-                    return res_json.get("response", "").strip()
+                    res_text = res_json.get("response", "").strip()
+                    if res_text:
+                        return res_text
             except Exception as e:
-                logger.warning(f"Ollama local service call failed or timed out ({e}). Falling back to internal context synthesizer.")
+                logger.warning(f"Ollama local service call failed or timed out ({e}). Falling back to query-aware internal context synthesizer.")
 
-        # Fallback Context Synthesis Engine (Guarantees RAG pipeline works even without running Ollama)
+        # Fallback Query-Aware Context Synthesis Engine
         if not context_chunks:
-            return "No relevant information found in the uploaded documents to answer your question."
+            return "The requested information could not be found in the provided document context."
 
-        # Extract non-stopword query tokens for sentence-level extraction
         import re
-        stopwords = {"who", "is", "a", "an", "the", "what", "where", "when", "why", "how", "are", "was", "were", "of", "in", "for", "to", "on", "with", "at", "by", "from", "about"}
+        stopwords = {"who", "is", "a", "an", "the", "what", "where", "when", "why", "how", "are", "was", "were", "of", "in", "for", "to", "on", "with", "at", "by", "from", "about", "obtained", "marks", "score", "total"}
         q_tokens = [w.lower() for w in re.findall(r'\w+', question) if w.lower() not in stopwords]
 
-        best_chunk_obj = context_chunks[0]
-        best_text = best_chunk_obj["text"]
-        
-        # Split text into lines/sentences to find best sentence match while preserving original casing
-        lines = [line.strip() for line in re.split(r'[\n.]', best_text) if line.strip()]
-        best_line = best_text
-        best_count = 0
+        # Check if the question is a broad/summary query (e.g. "complete result", "all marks", "summary")
+        is_broad_query = any(k in question.lower() for k in ["complete", "all", "entire", "summary", "everything", "full result"])
 
-        for line in lines:
-            line_tokens_set = set(w.lower() for w in re.findall(r'\w+', line))
-            matches = sum(1 for t in q_tokens if t in line_tokens_set)
-            if matches > best_count:
-                best_count = matches
-                best_line = line
+        # Collect candidate entries across retrieved context chunks
+        candidate_entries = []
+        for chunk_obj in context_chunks:
+            chunk_text = chunk_obj["text"]
+            
+            # Reconstitute vertical PDF table lines into logical entries/records
+            raw_lines = [l.strip() for l in chunk_text.splitlines() if l.strip()]
+            records = []
+            current_rec = []
+            
+            for line in raw_lines:
+                # Flush record on subject code boundaries (e.g. BMATS201, BCHES202)
+                if re.match(r'^[A-Z]{2,5}\d{3}', line) and current_rec:
+                    records.append(" ".join(current_rec))
+                    current_rec = [line]
+                else:
+                    current_rec.append(line)
+            if current_rec:
+                records.append(" ".join(current_rec))
 
-        # Ensure section headers ending with ':' or short isolated titles do not truncate factual body text
-        if best_line.endswith(":") or len(best_line.split()) < 5:
-            clean_answer = " ".join(best_text.split())
+            for rec_text in records:
+                rec_tokens_set = set(w.lower() for w in re.findall(r'\w+', rec_text))
+                matches = sum(1 for t in q_tokens if t in rec_tokens_set)
+                if matches > 0:
+                    candidate_entries.append({
+                        "matches": matches,
+                        "text": rec_text,
+                        "doc_name": chunk_obj["document_name"],
+                        "page_number": chunk_obj["page_number"]
+                    })
+
+        if not candidate_entries:
+            return "The requested information could not be found in the provided document context."
+
+        # Sort candidates by query token match count descending
+        candidate_entries.sort(key=lambda x: x["matches"], reverse=True)
+        top_match_count = candidate_entries[0]["matches"]
+
+        if top_match_count == 0:
+            return "The requested information could not be found in the provided document context."
+
+        # Filter entries with top match count
+        top_entries = [e for e in candidate_entries if e["matches"] == top_match_count]
+        best_entry = top_entries[0]
+
+        if is_broad_query:
+            # For broad queries, combine unique top matching entries
+            unique_lines = list(dict.fromkeys([e["text"] for e in candidate_entries if e["matches"] >= max(1, top_match_count - 1)]))
+            clean_answer = "; ".join(unique_lines)
         else:
-            clean_answer = best_line.strip()
+            # For specific lookup queries, return only the targeted matching record
+            clean_answer = best_entry["text"]
 
-        return f"Based on the retrieved document ({best_chunk_obj['document_name']}, Page {best_chunk_obj['page_number']}): {clean_answer}"
+        return f"Based on the retrieved document ({best_entry['doc_name']}, Page {best_entry['page_number']}): {clean_answer}"
+
+
 
 
 
