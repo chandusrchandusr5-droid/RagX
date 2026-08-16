@@ -15,7 +15,7 @@ export default function Documents() {
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
 
-  const loadDocuments = async () => {
+  const loadDocuments = async (retries = 2) => {
     setLoading(true);
     setError(null);
     try {
@@ -27,11 +27,16 @@ export default function Documents() {
       setDeletedDocs(delData.documents || []);
     } catch (err) {
       console.error(err);
-      setError('Failed to load documents from backend.');
+      if (retries > 0) {
+        setTimeout(() => loadDocuments(retries - 1), 1000);
+        return;
+      }
+      setError('Backend connection loading... Click Refresh List above to reconnect.');
     } finally {
       setLoading(false);
     }
   };
+
 
   useEffect(() => {
     loadDocuments();
