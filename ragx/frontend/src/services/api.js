@@ -1,8 +1,15 @@
 import axios from 'axios';
 
+const LIVE_BACKEND_URL = 'https://calm-paths-invent.loca.lt';
+
 const API_BASE_URL = import.meta.env.VITE_API_URL 
   ? `${import.meta.env.VITE_API_URL.replace(/\/$/, '')}/api` 
-  : '/api';
+  : `${LIVE_BACKEND_URL}/api`;
+
+// Configure default headers for LocalTunnel bypass
+axios.defaults.headers.common['Bypass-Tunnel-Remainder'] = 'true';
+axios.defaults.headers.common['bypass-tunnel-reminder'] = 'true';
+
 
 
 
