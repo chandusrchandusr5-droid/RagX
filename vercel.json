@@ -1,26 +1,10 @@
 {
-  "version": 2,
-  "builds": [
+  "buildCommand": "cd ragx/frontend && npm install && npm run build",
+  "outputDirectory": "ragx/frontend/dist",
+  "rewrites": [
     {
-      "src": "api/index.py",
-      "use": "@vercel/python"
-    },
-    {
-      "src": "ragx/frontend/package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist"
-      }
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "api/index.py"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "ragx/frontend/$1"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
