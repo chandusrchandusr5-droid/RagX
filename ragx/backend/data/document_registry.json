@@ -82,5 +82,19 @@
     "total_chunks": 1,
     "file_size": "0.91 KB",
     "file_hash": "095045f9fa8b1b6e623a77f4b6f50b2a"
+  },
+  {
+    "document_id": "doc_67e56dc34725",
+    "document_name": "2ND SEM RESULT.pdf",
+    "original_filename": "2ND SEM RESULT.pdf",
+    "status": "ACTIVE",
+    "active_path": "C:\\Users\\chand\\OneDrive\\Dokumen\\Desktop\\RagX\\ragx\\backend\\data\\uploads\\2ND SEM RESULT.pdf",
+    "trash_path": "C:\\Users\\chand\\OneDrive\\Dokumen\\Desktop\\RagX\\ragx\\backend\\data\\trash\\2ND SEM RESULT.pdf",
+    "upload_date": "2026-08-16 17:41:08",
+    "deletion_date": null,
+    "total_pages": 2,
+    "total_chunks": 4,
+    "file_size": "369.83 KB",
+    "file_hash": "00bc3c7ec699f8b7a22ce916c89f901f"
   }
 ]
