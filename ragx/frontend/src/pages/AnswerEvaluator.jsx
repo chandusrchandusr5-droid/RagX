@@ -91,8 +91,11 @@ export default function AnswerEvaluator() {
     switch (cat) {
       case 'WELL_GROUNDED':
         return <span className="px-2.5 py-0.5 rounded text-xs font-medium bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">Well Grounded</span>;
+      case 'INCOMPLETE_ANSWER':
+        return <span className="px-2.5 py-0.5 rounded text-xs font-medium bg-amber-500/10 text-amber-300 border border-amber-500/20">Incomplete Answer (Missing Question Aspects)</span>;
+      case 'UNSUPPORTED_CLAIMS':
       case 'GENERATION_FAILURE':
-        return <span className="px-2.5 py-0.5 rounded text-xs font-medium bg-rose-500/10 text-rose-300 border border-rose-500/20">Generation Failure / Hallucination</span>;
+        return <span className="px-2.5 py-0.5 rounded text-xs font-medium bg-rose-500/10 text-rose-300 border border-rose-500/20">Unsupported Claims (Hallucination Risk)</span>;
       case 'RETRIEVAL_FAILURE':
         return <span className="px-2.5 py-0.5 rounded text-xs font-medium bg-amber-500/10 text-amber-300 border border-amber-500/20">Retrieval Failure (Full-KB Oracle Found Evidence)</span>;
       case 'KNOWLEDGE_CONFLICT':
@@ -101,6 +104,7 @@ export default function AnswerEvaluator() {
         return <span className="px-2.5 py-0.5 rounded text-xs font-medium bg-slate-800 text-slate-400 border border-slate-700">Evidence Insufficiency</span>;
     }
   };
+
 
   const getClaimStatusBadge = (status) => {
     switch (status) {

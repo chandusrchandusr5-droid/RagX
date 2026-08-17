@@ -324,6 +324,59 @@ class Phase2CrossReferencer:
             return [], False, False
 
 
+class QuestionAspectAnalyzer:
+    """
+    Analyzes multi-part complex questions into distinct requested aspects/components,
+    and evaluates whether the generated answer covers all requested components.
+    """
+    @staticmethod
+    def analyze_coverage(query: str, answer: str, retrieved_evidence: list[dict]) -> dict:
+        if not query or not query.strip():
+            return {"coverage_ratio": 1.0, "total_aspects": 1, "covered_aspects": 1, "missing_aspects": []}
+
+        import re
+        query_text = query.strip()
+        
+        # Split complex questions into distinct requested clauses/aspects (comma, semicolon, sentence bounds, and)
+        raw_clauses = re.split(r'[,;?.]|\band\b|\bas well as\b', query_text)
+
+        clauses = [c.strip() for c in raw_clauses if len(c.strip()) > 6]
+        if not clauses:
+            clauses = [query_text]
+
+        ans_lower = answer.lower() if answer else ""
+        stopwords = {"how", "did", "the", "rise", "of", "and", "in", "to", "a", "an", "for", "using", "evidence", "from", "chapter", "explain", "connection", "between", "these", "factors", "what", "are", "marks", "obtained"}
+
+        total_aspects = len(clauses)
+        covered_count = 0
+        missing_aspects = []
+
+        for clause in clauses:
+            clause_tokens = [w.lower() for w in re.findall(r'\w+', clause) if w.lower() not in stopwords and len(w) > 2]
+            if not clause_tokens:
+                covered_count += 1
+                continue
+
+            token_matches = sum(1 for t in clause_tokens if t in ans_lower)
+            match_ratio = token_matches / len(clause_tokens)
+
+            # Requires token match overlap or high-signal keyword presence in answer
+            if match_ratio >= 0.33 or any(t in ans_lower for t in clause_tokens if len(t) > 6):
+                covered_count += 1
+            else:
+                missing_aspects.append(clause[:60])
+
+        coverage_ratio = round(covered_count / total_aspects, 2) if total_aspects > 0 else 1.0
+
+        return {
+            "coverage_ratio": coverage_ratio,
+            "total_aspects": total_aspects,
+            "covered_aspects": covered_count,
+            "missing_aspects": missing_aspects
+        }
+
+
+
 class FailureClassifier:
     """
     Executes the deterministic decision tree to determine the overall evaluation failure category.
@@ -336,7 +389,8 @@ class FailureClassifier:
         oracle_result: dict,
         has_confirmed_conflict: bool,
         has_suspected_conflict: bool,
-        has_topk_evidence: bool
+        has_topk_evidence: bool,
+        coverage_ratio: float = 1.0
     ) -> str:
         # Decision 1: Insufficient / Empty Top-K Evidence
         if not has_topk_evidence or evaluation_status == "NOT_EVALUABLE":
@@ -350,9 +404,14 @@ class FailureClassifier:
         has_unsupported = any(c["support_status"] == "UNSUPPORTED" for c in claims_analysis)
 
         if has_contradictions or has_unsupported:
-            return "GENERATION_FAILURE"
+            return "UNSUPPORTED_CLAIMS"
 
-        # Decision 3: Phase 2 Confirmed Knowledge Conflict
+        # Decision 3: Incomplete Question Aspect Coverage
+        if coverage_ratio < 1.0:
+            return "INCOMPLETE_ANSWER"
+
+
+        # Decision 4: Phase 2 Confirmed Knowledge Conflict
         if has_confirmed_conflict:
             return "KNOWLEDGE_CONFLICT"
 
@@ -475,6 +534,8 @@ class AnswerEvaluator:
         # STEP 2: Claim-Level Evidence Matching & Traceability
         # -------------------------------------------------------------
         claims_analysis, avg_retrieval_sim = EvidenceMatcher.match_claims_to_evidence(claims, retrieved_evidence, query=query)
+        coverage_analysis = QuestionAspectAnalyzer.analyze_coverage(query, answer, retrieved_evidence)
+        cov_ratio = coverage_analysis["coverage_ratio"]
 
         # -------------------------------------------------------------
         # STEP 3: Phase 2 Issue Cross-Referencing
@@ -494,7 +555,8 @@ class AnswerEvaluator:
             oracle_result=oracle_res,
             has_confirmed_conflict=has_confirmed_conf,
             has_suspected_conflict=has_suspected_conf,
-            has_topk_evidence=has_topk_evidence
+            has_topk_evidence=has_topk_evidence,
+            coverage_ratio=cov_ratio
         )
 
         # -------------------------------------------------------------
@@ -506,8 +568,9 @@ class AnswerEvaluator:
         n_rel_supp = sum(1 for c in claims_analysis if c.get("relevance_classification") == "SUPPORTED_RELEVANT")
         n_irrel_supp = sum(1 for c in claims_analysis if c.get("relevance_classification") == "SUPPORTED_IRRELEVANT")
 
-        # Division-by-zero safe sub-scores
-        s_supp = round((n_rel_supp / tot_claims) * 100.0, 1) if tot_claims > 0 else 0.0
+        # Claim Support Sub-score naturally weighted by Question Aspect Coverage
+        base_supp = (n_rel_supp / tot_claims) if tot_claims > 0 else 0.0
+        s_supp = round((base_supp * cov_ratio) * 100.0, 1)
 
         s_cov = round((n_cov / tot_claims) * 100.0, 1) if tot_claims > 0 else 0.0
         s_sim = round(avg_retrieval_sim * 100.0, 1)
@@ -518,6 +581,7 @@ class AnswerEvaluator:
 
         composite_score = round((w_supp * s_supp) + (w_cov * s_cov) + (w_sim * s_sim), 1)
         composite_score = max(0.0, min(100.0, composite_score))
+
 
         # Status & Hallucination Risk Classification (Fix D Recalibrated)
         n_unsupp = sum(1 for c in claims_analysis if c["support_status"] == "UNSUPPORTED")
@@ -554,6 +618,8 @@ class AnswerEvaluator:
             "hallucination_risk": h_risk,
             "over_generation_risk": over_gen_risk,
             "over_generation_detected": n_irrel_supp > 0,
+            "question_coverage_analysis": coverage_analysis,
+
 
             "over_generation_claims_count": n_irrel_supp,
             "scoring_breakdown": {

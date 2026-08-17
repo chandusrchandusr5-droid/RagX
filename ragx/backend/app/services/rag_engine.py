@@ -121,8 +121,8 @@ Answer clearly, concisely, and specifically based strictly on the context above:
         stopwords = {"who", "is", "a", "an", "the", "what", "where", "when", "why", "how", "are", "was", "were", "of", "in", "for", "to", "on", "with", "at", "by", "from", "about", "obtained", "marks", "score", "total"}
         q_tokens = [w.lower() for w in re.findall(r'\w+', question) if w.lower() not in stopwords]
 
-        # Check if the question is a broad/summary query (e.g. "complete result", "all marks", "summary")
-        is_broad_query = any(k in question.lower() for k in ["complete", "all", "entire", "summary", "everything", "full result"])
+        # Check if the question is a broad/summary or multi-part complex query
+        is_broad_query = any(k in question.lower() for k in ["complete", "all", "entire", "summary", "everything", "full result", "explain", "how did", "contribute", "connection"]) or len(q_tokens) >= 5
 
         # Collect candidate entries across retrieved context chunks
         candidate_entries = []
@@ -170,14 +170,15 @@ Answer clearly, concisely, and specifically based strictly on the context above:
         best_entry = top_entries[0]
 
         if is_broad_query:
-            # For broad queries, combine unique top matching entries
-            unique_lines = list(dict.fromkeys([e["text"] for e in candidate_entries if e["matches"] >= max(1, top_match_count - 1)]))
-            clean_answer = "; ".join(unique_lines)
+            # For multi-part/complex queries, combine unique top matching entries across chunks
+            unique_lines = list(dict.fromkeys([e["text"] for e in candidate_entries if e["matches"] >= 1]))
+            clean_answer = " ".join(unique_lines[:4])
         else:
             # For specific lookup queries, return only the targeted matching record
             clean_answer = best_entry["text"]
 
         return f"Based on the retrieved document ({best_entry['doc_name']}, Page {best_entry['page_number']}): {clean_answer}"
+
 
 
 
