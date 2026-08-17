@@ -1,11 +1,15 @@
 import uuid
+import math
+import re
 import requests
 import logging
+from collections import Counter
 from pathlib import Path
 from app.core.config import settings
 from app.core.vector_db import vector_db
 
 logger = logging.getLogger("ragx.rag_engine")
+
 
 class RAGEngine:
     @staticmethod
@@ -118,66 +122,123 @@ Answer clearly, concisely, and specifically based strictly on the context above:
             return "The requested information could not be found in the provided document context."
 
         import re
-        stopwords = {"who", "is", "a", "an", "the", "what", "where", "when", "why", "how", "are", "was", "were", "of", "in", "for", "to", "on", "with", "at", "by", "from", "about", "obtained", "marks", "score", "total"}
-        q_tokens = [w.lower() for w in re.findall(r'\w+', question) if w.lower() not in stopwords]
+        ENGLISH_STOPWORDS = {
+            "a", "an", "the", "and", "or", "but", "if", "because", "as", "until", "while",
+            "of", "at", "by", "for", "with", "about", "against", "between", "into", "through",
+            "during", "before", "after", "above", "below", "to", "from", "up", "down", "in",
+            "out", "on", "off", "over", "under", "again", "further", "then", "once", "here",
+            "there", "when", "where", "why", "how", "all", "any", "both", "each", "few",
+            "more", "most", "other", "some", "such", "no", "nor", "not", "only", "own",
+            "same", "so", "than", "too", "very", "s", "t", "can", "will", "just", "don",
+            "should", "now", "is", "am", "are", "was", "were", "be", "been", "being",
+            "have", "has", "had", "having", "do", "does", "did", "doing"
+        }
+        q_tokens = [w.lower() for w in re.findall(r'\w+', question) if w.lower() not in ENGLISH_STOPWORDS and len(w) > 1]
+        if not q_tokens:
+            q_tokens = [w.lower() for w in re.findall(r'\w+', question)]
 
-        # Check if the question is a broad/summary or multi-part complex query
-        is_broad_query = any(k in question.lower() for k in ["complete", "all", "entire", "summary", "everything", "full result", "explain", "how did", "contribute", "connection"]) or len(q_tokens) >= 5
+        # Build generic token frequency map across context chunks for IDF (token specificity) weighting
+        all_context_text = " ".join([c["text"].lower() for c in context_chunks])
+        all_context_tokens = re.findall(r'\w+', all_context_text)
+        token_counts = Counter(all_context_tokens)
 
-        # Collect candidate entries across retrieved context chunks
+        # Calculate token weights: rare/specific tokens get higher weight, common words get lower weight
+        token_weights = {}
+        for t in q_tokens:
+            count = token_counts.get(t, 1)
+            token_weights[t] = 1.0 / math.log(1 + count)
+
+        max_weight_possible = sum(token_weights.values()) or 1.0
+
+        # Collect candidate entries across retrieved context chunks using generic TF-IDF token specificity scoring
         candidate_entries = []
         for chunk_obj in context_chunks:
             chunk_text = chunk_obj["text"]
             
-            # Reconstitute vertical PDF table lines into logical entries/records
+            # Extract individual lines and sentence blocks generically
             raw_lines = [l.strip() for l in chunk_text.splitlines() if l.strip()]
-            records = []
-            current_rec = []
-            
+            records = set(raw_lines)
+
+            # Reconstitute column-aligned tabular records generically
+            # Look for alphanumeric record identifiers (e.g. course/item codes)
+            record_codes = list(dict.fromkeys(re.findall(r'\b[A-Z]{2,}\d+[A-Z0-9]*\b', chunk_text)))
+            if len(record_codes) >= 2:
+                for code in record_codes:
+                    # Find all lines or segments associated with this item code
+                    matching_lines = [l for l in raw_lines if code in l]
+                    if matching_lines:
+                        records.update(matching_lines)
+                    else:
+                        # Pair item code with matching title and data lines across the chunk
+                        code_parts = [l for l in raw_lines if any(tok in l for tok in [code, code[:4]])]
+                        if code_parts:
+                            records.add(" ".join(code_parts))
+                
+                # Also reconstitute 2-line and 3-line combined entries for column-major tabular chunks
+                for i in range(len(raw_lines) - 1):
+                    records.add(raw_lines[i] + " " + raw_lines[i+1])
+                for i in range(len(raw_lines) - 2):
+                    records.add(raw_lines[i] + " " + raw_lines[i+1] + " " + raw_lines[i+2])
+
+
+            # Reconstitute narrative prose paragraphs (only for narrative lines ending with punctuation)
+            prose_buf = []
             for line in raw_lines:
-                # Flush record on subject code boundaries (e.g. BMATS201, BCHES202)
-                if re.match(r'^[A-Z]{2,5}\d{3}', line) and current_rec:
-                    records.append(" ".join(current_rec))
-                    current_rec = [line]
-                else:
-                    current_rec.append(line)
-            if current_rec:
-                records.append(" ".join(current_rec))
+                if not re.search(r'\b[A-Z0-9]{5,}\b', line):
+                    prose_buf.append(line)
+                    if line.endswith(('.', ':', '?', ';')):
+                        records.add(" ".join(prose_buf))
+                        prose_buf = []
+            if prose_buf:
+                records.add(" ".join(prose_buf))
+
 
             for rec_text in records:
-                rec_tokens_set = set(w.lower() for w in re.findall(r'\w+', rec_text))
-                matches = sum(1 for t in q_tokens if t in rec_tokens_set)
-                if matches > 0:
+                rec_tokens = set(w.lower() for w in re.findall(r'\w+', rec_text))
+                matching_tokens = [t for t in q_tokens if t in rec_tokens]
+                if matching_tokens:
+                    weighted_coverage = sum(token_weights[t] for t in matching_tokens) / max_weight_possible
+                    has_data = 1.0 if re.search(r'\d+', rec_text) else 0.0
+                    match_density = len(matching_tokens) / max(len(rec_tokens), 1)
+                    score = (4.0 * weighted_coverage) + (1.0 * has_data) + (0.5 * match_density)
                     candidate_entries.append({
-                        "matches": matches,
+                        "matches": len(matching_tokens),
+                        "score": score,
                         "text": rec_text,
                         "doc_name": chunk_obj["document_name"],
                         "page_number": chunk_obj["page_number"]
                     })
 
+
+
+
+
         if not candidate_entries:
             return "The requested information could not be found in the provided document context."
 
-        # Sort candidates by query token match count descending
-        candidate_entries.sort(key=lambda x: x["matches"], reverse=True)
-        top_match_count = candidate_entries[0]["matches"]
+        # Sort candidates by generic score descending
+        candidate_entries.sort(key=lambda x: x["score"], reverse=True)
+        best_entry = candidate_entries[0]
 
-        if top_match_count == 0:
-            return "The requested information could not be found in the provided document context."
+        # Determine if query is multi-aspect (complex multi-clause question requiring synthesis across sentences)
+        is_multi_aspect = any(punct in question for punct in [",", ";", "?"]) and len(q_tokens) >= 8
 
-        # Filter entries with top match count
-        top_entries = [e for e in candidate_entries if e["matches"] == top_match_count]
-        best_entry = top_entries[0]
-
-        if is_broad_query:
-            # For multi-part/complex queries, combine unique top matching entries across chunks
-            unique_lines = list(dict.fromkeys([e["text"] for e in candidate_entries if e["matches"] >= 1]))
+        if is_multi_aspect:
+            # Combine unique top matching entries across chunks that meet high relevance threshold
+            high_cov_entries = [e for e in candidate_entries if e["matches"] >= 2 or e["score"] >= 2.5]
+            if not high_cov_entries:
+                high_cov_entries = candidate_entries[:3]
+            unique_lines = list(dict.fromkeys([e["text"] for e in high_cov_entries]))
             clean_answer = " ".join(unique_lines[:4])
         else:
-            # For specific lookup queries, return only the targeted matching record
             clean_answer = best_entry["text"]
 
         return f"Based on the retrieved document ({best_entry['doc_name']}, Page {best_entry['page_number']}): {clean_answer}"
+
+
+
+
+
 
 
 

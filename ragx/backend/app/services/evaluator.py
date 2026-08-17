@@ -346,14 +346,25 @@ class QuestionAspectAnalyzer:
             clauses = [query_text]
 
         ans_lower = answer.lower() if answer else ""
-        stopwords = {"how", "did", "the", "rise", "of", "and", "in", "to", "a", "an", "for", "using", "evidence", "from", "chapter", "explain", "connection", "between", "these", "factors", "what", "are", "marks", "obtained"}
+        ENGLISH_STOPWORDS = {
+            "a", "an", "the", "and", "or", "but", "if", "because", "as", "until", "while",
+            "of", "at", "by", "for", "with", "about", "against", "between", "into", "through",
+            "during", "before", "after", "above", "below", "to", "from", "up", "down", "in",
+            "out", "on", "off", "over", "under", "again", "further", "then", "once", "here",
+            "there", "when", "where", "why", "how", "all", "any", "both", "each", "few",
+            "more", "most", "other", "some", "such", "no", "nor", "not", "only", "own",
+            "same", "so", "than", "too", "very", "s", "t", "can", "will", "just", "don",
+            "should", "now", "is", "am", "are", "was", "were", "be", "been", "being",
+            "have", "has", "had", "having", "do", "does", "did", "doing"
+        }
 
         total_aspects = len(clauses)
         covered_count = 0
         missing_aspects = []
 
         for clause in clauses:
-            clause_tokens = [w.lower() for w in re.findall(r'\w+', clause) if w.lower() not in stopwords and len(w) > 2]
+            clause_tokens = [w.lower() for w in re.findall(r'\w+', clause) if w.lower() not in ENGLISH_STOPWORDS and len(w) > 2]
+
             if not clause_tokens:
                 covered_count += 1
                 continue

@@ -29,8 +29,11 @@ def run_test_query(query: str, step_label: str):
     claims = report.get("claim_analysis", [])
     coverage = report.get("question_coverage_analysis", {})
 
-    print(f"Returned Query        : {q_returned}")
-    print(f"Generated Answer      : {answer[:140]}..." if len(answer) > 140 else f"Generated Answer      : {answer}")
+    ans_disp = answer.encode('ascii', 'replace').decode('ascii')
+    q_disp = q_returned.encode('ascii', 'replace').decode('ascii') if q_returned else ""
+    print(f"Returned Query        : {q_disp}")
+    print(f"Generated Answer      : {ans_disp[:140]}..." if len(ans_disp) > 140 else f"Generated Answer      : {ans_disp}")
+
     print(f"Reliability Score     : {rel_score}%")
     print(f"Reliability Status    : {status}")
     print(f"Failure Category      : {fail_cat}")
@@ -110,21 +113,21 @@ def main():
 
         if q == "sr":
             if "MATHEMATICS" in ans.upper() or "CHEMISTRY" in ans.upper():
-                print(f"FAILED [{label}]: Stale result leakage detected in 'sr' query! Answer: {ans}")
+                print(f"FAILED [{label}]: Stale result leakage detected in 'sr' query! Answer: {ans.encode('ascii', 'replace').decode()}")
                 passed_all = False
             else:
                 print(f"PASSED [{label}]: Clean query independence for 'sr'. Score: {score}%, Category: {fail_cat}")
 
         elif "MATHEMATICS" in q.upper():
             if "BMATS201" not in ans and "MATHEMATICS" not in ans.upper():
-                print(f"FAILED [{label}]: Expected Mathematics-II result, got: {ans}")
+                print(f"FAILED [{label}]: Expected Mathematics-II result, got: {ans.encode('ascii', 'replace').decode()}")
                 passed_all = False
             else:
                 print(f"PASSED [{label}]: Mathematics-II evaluated correctly. Score: {score}%, Category: {fail_cat}")
 
         elif "CHEMISTRY" in q.upper():
             if "BCHES202" not in ans and "CHEMISTRY" not in ans.upper():
-                print(f"FAILED [{label}]: Expected Chemistry result, got: {ans}")
+                print(f"FAILED [{label}]: Expected Chemistry result, got: {ans.encode('ascii', 'replace').decode()}")
                 passed_all = False
             elif "BMATS201" in ans:
                 print(f"FAILED [{label}]: Leakage of Mathematics-II into Chemistry query!")
@@ -133,26 +136,27 @@ def main():
                 print(f"PASSED [{label}]: Chemistry evaluated correctly. Score: {score}%, Category: {fail_cat}")
 
         elif "SPEED OF LIGHT" in q.upper():
-            if "MATHEMATICS" in ans.upper() or "BMATS201" in ans:
-                print(f"FAILED [{label}]: Leakage into unsupported query!")
+            if fail_cat != "EVIDENCE_INSUFFICIENCY" or score != 0.0:
+                print(f"FAILED [{label}]: Expected EVIDENCE_INSUFFICIENCY / 0.0%, got: {fail_cat} / {score}%")
                 passed_all = False
             else:
                 print(f"PASSED [{label}]: Unsupported query evaluated safely. Score: {score}%, Category: {fail_cat}")
 
-        elif "NINETEENTH-CENTURY" in q.upper():
-            if "BMATS201" in ans:
-                print(f"FAILED [{label}]: Leakage of Mathematics-II into complex query!")
+        else:
+            if score < 50.0 or cov_ratio < 0.5:
+                print(f"FAILED [{label}]: Low complex score/coverage! Score: {score}%, Coverage: {cov_ratio}")
                 passed_all = False
             else:
                 print(f"PASSED [{label}]: Complex query evaluated cleanly. Score: {score}%, Coverage: {cov_ratio}, Category: {fail_cat}")
 
-        else:
-            print(f"PASSED [{label}]: Score: {score}%, Category: {fail_cat}")
-
+    print("\n=======================================================")
+    print("COMPREHENSIVE REGRESSION TEST SUMMARY")
+    print("=======================================================")
     if passed_all:
-        print("\nALL REGRESSION TESTS PASSED! ZERO DATA LEAKAGE DETECTED.")
+        print("ALL REGRESSION TESTS PASSED! ZERO DATA LEAKAGE DETECTED.")
     else:
-        print("\nSOME REGRESSION TESTS FAILED! CHECK LOGS ABOVE.")
+        print("SOME REGRESSION TESTS FAILED! CHECK LOGS ABOVE.")
+
 
 if __name__ == "__main__":
     main()
