@@ -400,12 +400,14 @@ class FailureClassifier:
             else:
                 return "EVIDENCE_INSUFFICIENCY"
 
-        # Decision 2: Evaluate Top-K Evidence Contradictions & Unsupported Claims
-        has_contradictions = any(c["support_status"] == "CONTRADICTED" for c in claims_analysis)
-        has_unsupported = any(c["support_status"] == "UNSUPPORTED" for c in claims_analysis)
+        # Decision 2: Evaluate Top-K Evidence Contradictions, Unsupported Claims, and Irrelevant Evidence
+        has_contradictions = any(c.get("support_status") == "CONTRADICTED" for c in claims_analysis)
+        has_unsupported = any(c.get("support_status") == "UNSUPPORTED" for c in claims_analysis)
+        has_irrelevant = any(c.get("relevance_classification") == "SUPPORTED_IRRELEVANT" for c in claims_analysis)
 
-        if has_contradictions or has_unsupported:
+        if has_contradictions or has_unsupported or has_irrelevant:
             return "UNSUPPORTED_CLAIMS"
+
 
         # Decision 3: Incomplete Question Aspect Coverage
         if coverage_ratio < 1.0:
