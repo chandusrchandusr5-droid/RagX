@@ -180,14 +180,14 @@ export default function AnswerEvaluator() {
               />
             </div>
 
-            {/* Quick Sample Questions Bar */}
+            {/* Quick Sample Queries Bar */}
             <div className="space-y-1.5">
               <span className="text-[11px] font-medium text-slate-400">Quick Sample Queries:</span>
               <div className="flex flex-wrap gap-1.5">
                 {[
-                  "What is the minimum attendance requirement?",
-                  "Who is Chandu SR?",
-                  "What are the academic attendance guidelines?"
+                  "Summarize the key requirements from the document",
+                  "What are the main eligibility criteria and conditions?",
+                  "Explain the core process and steps described"
                 ].map((sample, idx) => (
                   <button
                     key={idx}

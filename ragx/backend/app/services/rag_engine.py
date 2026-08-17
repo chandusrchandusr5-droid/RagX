@@ -121,6 +121,26 @@ Answer clearly, concisely, and specifically based strictly on the context above:
         if not context_chunks:
             return "The requested information could not be found in the provided document context."
 
+        # Generic vector embedding semantic relevance pre-check
+        try:
+            from app.core.vector_db import get_shared_embedding_model
+            import numpy as np
+            model = get_shared_embedding_model()
+            q_emb = model.encode(question, convert_to_numpy=True)
+            q_norm = q_emb / (np.linalg.norm(q_emb) + 1e-9)
+
+            c_texts = [c.get("text", "") for c in context_chunks]
+            c_embs = model.encode(c_texts, convert_to_numpy=True)
+            c_norms = c_embs / (np.linalg.norm(c_embs, axis=1, keepdims=True) + 1e-9)
+
+            sims = np.dot(c_norms, q_norm)
+            max_sim = float(np.max(sims)) if len(sims) > 0 else 0.0
+
+            if max_sim < 0.28:
+                return "The requested information could not be found in the provided document context."
+        except Exception as e:
+            logger.warning(f"Semantic relevance check warning: {e}")
+
         import re
         ENGLISH_STOPWORDS = {
             "a", "an", "the", "and", "or", "but", "if", "because", "as", "until", "while",

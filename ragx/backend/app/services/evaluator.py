@@ -46,7 +46,7 @@ class ClaimExtractor:
 
         for sentence in raw_sentences:
             sentence_clean = sentence.strip().rstrip(".;")
-            if len(sentence_clean) > 8:
+            if len(sentence_clean) >= 2:
                 claims.append({
                     "claim_id": f"CLM-{claim_counter:03d}",
                     "claim_text": sentence_clean
@@ -54,7 +54,7 @@ class ClaimExtractor:
                 claim_counter += 1
 
         # Fallback if sentence splitting produced nothing
-        if not claims and len(cleaned) > 5:
+        if not claims and len(cleaned.strip()) > 0:
             claims.append({
                 "claim_id": "CLM-001",
                 "claim_text": cleaned.strip()
@@ -87,13 +87,18 @@ class FullKBRetrievalOracle:
             q_emb = model.encode(query, convert_to_numpy=True)
             q_norm = q_emb / (np.linalg.norm(q_emb) + 1e-9)
 
+            emb_matrix = np.array(embeddings)
+            norms = np.linalg.norm(emb_matrix, axis=1, keepdims=True) + 1e-9
+            emb_norm = emb_matrix / norms
+            v_sims = np.dot(emb_norm, q_norm)
+
+            top_indices = np.argsort(v_sims)[-15:]
             best_sim = 0.0
             best_idx = 0
 
-            for idx, (doc, emb) in enumerate(zip(documents, embeddings)):
-                emb_arr = np.array(emb)
-                v_norm = emb_arr / (np.linalg.norm(emb_arr) + 1e-9)
-                v_sim = float(np.dot(v_norm, q_norm))
+            for idx in reversed(top_indices):
+                v_sim = float(v_sims[idx])
+                doc = documents[idx]
                 h_sim = vector_db._compute_hybrid_score(query, doc, v_sim)
                 if h_sim > best_sim:
                     best_sim = h_sim
@@ -131,7 +136,7 @@ class EvidenceMatcher:
             return claims, 0.0
 
         model = get_embedding_model()
-        num_pattern = re.compile(r'\d{1,3}%|\d{1,3}\s*marks|\d{1,3}\s*percent')
+        num_pattern = re.compile(r'\b\d+(?:\.\d+)?%?\b')
 
         # Encode claim embeddings, chunk embeddings, and query embedding
         claim_texts = [c["claim_text"] for c in claims]
@@ -158,7 +163,17 @@ class EvidenceMatcher:
         matched_claims = []
         all_top_sims = []
 
-        stopwords = {"who", "is", "a", "an", "the", "what", "where", "when", "why", "how", "are", "was", "were", "of", "in", "for", "to", "on", "with", "at", "by", "from", "about", "obtained", "marks", "score", "total"}
+        stopwords = {
+            "a", "an", "the", "and", "or", "but", "if", "because", "as", "until", "while",
+            "of", "at", "by", "for", "with", "about", "against", "between", "into", "through",
+            "during", "before", "after", "above", "below", "to", "from", "up", "down", "in",
+            "out", "on", "off", "over", "under", "again", "further", "then", "once", "here",
+            "there", "when", "where", "why", "how", "all", "any", "both", "each", "few",
+            "more", "most", "other", "some", "such", "no", "nor", "not", "only", "own",
+            "same", "so", "than", "too", "very", "s", "t", "can", "will", "just", "don",
+            "should", "now", "is", "am", "are", "was", "were", "be", "been", "being",
+            "have", "has", "had", "having", "do", "does", "did", "doing"
+        }
         q_tokens = [w.lower() for w in re.findall(r'\w+', query) if w.lower() not in stopwords] if query else []
 
         for i, claim in enumerate(claims):
@@ -181,26 +196,23 @@ class EvidenceMatcher:
             clean_c = re.sub(r'[^a-z0-9]', '', c_text_clean.lower())
             clean_ev = re.sub(r'[^a-z0-9]', '', ev_text.lower())
 
-            if clean_c and len(clean_c) >= 8 and (clean_c in clean_ev or clean_c[:30] in clean_ev):
+            if clean_c and len(clean_c) >= 2 and (clean_c in clean_ev or clean_c[:30] in clean_ev):
                 best_sim = max(best_sim, 0.90)
 
-
             all_top_sims.append(best_sim)
-
-
 
             # Extract numeric figures for numeric disparity check
             claim_nums = num_pattern.findall(c_text.lower())
             ev_nums = num_pattern.findall(ev_text.lower())
 
             # Determine Factual Support Status
-            if claim_nums and ev_nums and set(claim_nums) != set(ev_nums) and best_sim >= 0.60:
+            if claim_nums and ev_nums and not set(claim_nums).issubset(set(ev_nums)) and best_sim >= 0.60:
                 support_status = "CONTRADICTED"
                 disparity_detail = f"Claim mentions '{', '.join(claim_nums)}' while evidence states '{', '.join(ev_nums)}'."
-            elif best_sim >= 0.70:
+            elif best_sim >= 0.60:
                 support_status = "SUPPORTED"
                 disparity_detail = "Claim is semantically supported by retrieved evidence snippet."
-            elif best_sim >= 0.50:
+            elif best_sim >= 0.40:
                 support_status = "UNSUPPORTED"
                 disparity_detail = "Partial semantic overlap, but specific claim facts are absent from evidence."
             else:
@@ -210,17 +222,32 @@ class EvidenceMatcher:
             # Determine Question Relevance & Classification Layer
             q_rel_score = float(q_rel_sims[i]) if query else 1.0
             
-            # Token match check for question relevance
+            # Token match check for question relevance (with stem prefix matching e.g. mark vs marks)
             c_tokens = set(w.lower() for w in re.findall(r'\w+', c_text))
-            has_q_token_overlap = any(t in c_tokens for t in q_tokens) if q_tokens else True
+            has_q_token_overlap = any(t in c_tokens or any(t.startswith(ct[:4]) or ct.startswith(t[:4]) for ct in c_tokens if len(ct) >= 3 and len(t) >= 3) for t in q_tokens) if q_tokens else True
+
+            # Generic predicate intent check: identify if claim is a bare entity code/proper noun fragment without predicate content
+            q_proper_nouns = set(w.lower() for w in re.findall(r'\w+', query) if w.lower() not in stopwords and (re.search(r'\d', w) or w.isupper() or len(w) <= 3 or len(query.strip()) <= 4)) if query else set()
+            q_predicate_tokens = [w for w in q_tokens if w not in q_proper_nouns]
+            c_non_entity_tokens = [w for w in c_tokens if w not in stopwords and w not in q_proper_nouns]
+
+            q_numeric_keywords = {"mark", "marks", "score", "scores", "total", "count", "number", "percentage", "percent", "ratio", "rate", "cost", "fee", "price", "threshold", "grade", "gpa", "val", "value", "formula"}
+            q_requires_numeric = any(t in q_numeric_keywords for t in q_tokens)
+
+            # Standalone numeric figures (excluding digits embedded inside entity codes e.g. BMATS201)
+            standalone_claim_nums = [n for n in claim_nums if not re.search(r'[a-zA-Z]' + re.escape(n), c_text) and not re.search(re.escape(n) + r'[a-zA-Z]', c_text)]
+
+            is_bare_entity_claim = bool(q_proper_nouns) and (c_tokens.issubset(q_proper_nouns) or not c_non_entity_tokens) and not standalone_claim_nums and len(c_tokens) <= 3
 
             if support_status == "SUPPORTED":
-                if q_rel_score >= 0.65 or (has_q_token_overlap and q_rel_score >= 0.40):
+                if is_bare_entity_claim and q_predicate_tokens:
+                    relevance_classification = "SUPPORTED_IRRELEVANT"
+                    disparity_detail += " Note: Claim contains only entity identifiers but fails to answer the question predicate (Entity-Only Fragment)."
+                elif q_rel_score >= 0.65 or (has_q_token_overlap and q_rel_score >= 0.35) or (bool(standalone_claim_nums) and bool(q_predicate_tokens) and support_status == "SUPPORTED"):
                     relevance_classification = "SUPPORTED_RELEVANT"
                 else:
                     relevance_classification = "SUPPORTED_IRRELEVANT"
                     disparity_detail += " Note: Claim exists in source but is IRRELEVANT to the user's specific question (Over-generation)."
-
 
             elif support_status == "CONTRADICTED":
                 relevance_classification = "CONTRADICTED"
@@ -328,24 +355,40 @@ class Phase2CrossReferencer:
 class QuestionAspectAnalyzer:
     """
     Analyzes multi-part complex questions into distinct requested aspects/components,
-    and evaluates whether the generated answer covers all requested components.
+    and evaluates whether the generated answer covers all requested components using
+    structural clause detection and generic semantic vector embedding comparison.
     """
     @staticmethod
     def analyze_coverage(query: str, answer: str, retrieved_evidence: list[dict]) -> dict:
         if not query or not query.strip():
             return {"coverage_ratio": 1.0, "total_aspects": 1, "covered_aspects": 1, "missing_aspects": []}
 
-        import re
+        if not answer or not answer.strip():
+            return {"coverage_ratio": 0.0, "total_aspects": 1, "covered_aspects": 0, "missing_aspects": [query[:60]]}
+
         query_text = query.strip()
         
-        # Split complex questions into distinct requested clauses/aspects (comma, semicolon, sentence bounds, and)
-        raw_clauses = re.split(r'[,;?.]|\band\b|\bas well as\b', query_text)
+        # Split complex questions into distinct requested aspects using structural punctuation, transition phrases, and conjunctions
+        raw_clauses = re.split(r'[,;?.]|\bas well as\b|\balong with\b|\bin addition to\b|\band\b', query_text)
 
-        clauses = [c.strip() for c in raw_clauses if len(c.strip()) > 6]
+        # Filter out short fragments
+        clauses = [c.strip() for c in raw_clauses if len(c.strip()) > 8]
         if not clauses:
             clauses = [query_text]
 
-        ans_lower = answer.lower() if answer else ""
+        model = get_embedding_model()
+        ans_emb = model.encode(answer, convert_to_numpy=True)
+        ans_norm = ans_emb / (np.linalg.norm(ans_emb) + 1e-9)
+
+        clause_embs = model.encode(clauses, convert_to_numpy=True)
+        clause_norms = clause_embs / (np.linalg.norm(clause_embs, axis=1, keepdims=True) + 1e-9)
+
+        sims = np.dot(clause_norms, ans_norm)
+
+        total_aspects = len(clauses)
+        covered_count = 0
+        missing_aspects = []
+
         ENGLISH_STOPWORDS = {
             "a", "an", "the", "and", "or", "but", "if", "because", "as", "until", "while",
             "of", "at", "by", "for", "with", "about", "against", "between", "into", "through",
@@ -357,23 +400,31 @@ class QuestionAspectAnalyzer:
             "should", "now", "is", "am", "are", "was", "were", "be", "been", "being",
             "have", "has", "had", "having", "do", "does", "did", "doing"
         }
+        core_answer = re.sub(r'^based on the retrieved document \([^)]+\):\s*', '', answer, flags=re.IGNORECASE).strip().lower()
+        q_lower = query_text.lower()
+        q_tokens = [w for w in re.findall(r'\w+', q_lower) if w not in ENGLISH_STOPWORDS]
 
-        total_aspects = len(clauses)
-        covered_count = 0
-        missing_aspects = []
+        q_proper_nouns = set(w.lower() for w in re.findall(r'\w+', query_text) if w.lower() not in ENGLISH_STOPWORDS and (re.search(r'\d', w) or w.isupper() or len(w) <= 3 or len(query_text.strip()) <= 4))
+        ans_tokens = set(w.lower() for w in re.findall(r'\w+', core_answer) if w.lower() not in ENGLISH_STOPWORDS)
+        raw_ans_nums = re.findall(r'\b\d+(?:\.\d+)?%?\b', core_answer)
+        standalone_ans_nums = [n for n in raw_ans_nums if not re.search(r'[a-zA-Z]' + re.escape(n), core_answer) and not re.search(re.escape(n) + r'[a-zA-Z]', core_answer)]
 
-        for clause in clauses:
-            clause_tokens = [w.lower() for w in re.findall(r'\w+', clause) if w.lower() not in ENGLISH_STOPWORDS and len(w) > 2]
+        ans_non_entity_tokens = [w for w in ans_tokens if w not in q_proper_nouns]
 
-            if not clause_tokens:
-                covered_count += 1
-                continue
+        q_numeric_keywords = {"mark", "marks", "score", "scores", "total", "count", "number", "percentage", "percent", "ratio", "rate", "cost", "fee", "price", "threshold", "grade", "gpa", "val", "value", "formula"}
+        q_requires_numeric = any(t in q_numeric_keywords for t in q_tokens)
 
-            token_matches = sum(1 for t in clause_tokens if t in ans_lower)
-            match_ratio = token_matches / len(clause_tokens)
+        is_bare_entity_answer = bool(q_proper_nouns) and (ans_tokens.issubset(q_proper_nouns) or not ans_non_entity_tokens) and not standalone_ans_nums and len(ans_tokens) <= 3
 
-            # Requires token match overlap or high-signal keyword presence in answer
-            if match_ratio >= 0.33 or any(t in ans_lower for t in clause_tokens if len(t) > 6):
+        for idx, clause in enumerate(clauses):
+            sim = float(sims[idx])
+            c_tokens = [w.lower() for w in re.findall(r'\w+', clause) if w.lower() not in ENGLISH_STOPWORDS and len(w) > 2]
+            token_match = (sum(1 for t in c_tokens if any(t in core_answer or (len(t) >= 3 and len(at) >= 3 and (t.startswith(at[:4]) or at.startswith(t[:4]))) for at in ans_tokens)) / len(c_tokens)) if c_tokens else 1.0
+
+            # If answer is a bare entity code fragment without predicate content/numbers, aspect is NOT fully fulfilled
+            if is_bare_entity_answer and any(w for w in c_tokens if w not in q_proper_nouns):
+                missing_aspects.append(clause[:60])
+            elif (standalone_ans_nums and not is_bare_entity_answer) or sim >= 0.45 or (token_match >= 0.30 and not is_bare_entity_answer):
                 covered_count += 1
             else:
                 missing_aspects.append(clause[:60])
@@ -597,7 +648,7 @@ class AnswerEvaluator:
         composite_score = max(0.0, min(100.0, composite_score))
 
 
-        # Status & Hallucination Risk Classification (Fix D Recalibrated)
+        # Status & Hallucination Risk Classification
         n_unsupp = sum(1 for c in claims_analysis if c["support_status"] == "UNSUPPORTED")
         n_contradict = sum(1 for c in claims_analysis if c["support_status"] == "CONTRADICTED")
 
@@ -609,20 +660,20 @@ class AnswerEvaluator:
         else:
             h_risk = "LOW"
 
-        # Reliability Status Bounded Thresholds (Bounded to PARTIALLY_RELIABLE if unsupported claims exist)
-        if n_contradict > 0 or n_unsupp > 0:
-            if composite_score >= 60.0:
-                rel_status = "PARTIALLY_RELIABLE"
-            else:
-                rel_status = "UNRELIABLE"
-        else:
+        # Reliability Status Bounded Thresholds
+        # HIGHLY_RELIABLE is POSSIBLE ONLY WHEN failure_category is WELL_GROUNDED,
+        # question coverage is complete (cov_ratio == 1.0), and zero unsupported/contradicted/irrelevant claims exist.
+        if failure_category == "WELL_GROUNDED" and cov_ratio >= 0.99 and n_unsupp == 0 and n_contradict == 0 and n_irrel_supp == 0:
             if composite_score >= 80.0:
                 rel_status = "HIGHLY_RELIABLE"
             elif composite_score >= 60.0:
                 rel_status = "PARTIALLY_RELIABLE"
             else:
                 rel_status = "UNRELIABLE"
-
+        elif composite_score >= 60.0 and failure_category not in ("RETRIEVAL_FAILURE", "EVIDENCE_INSUFFICIENCY"):
+            rel_status = "PARTIALLY_RELIABLE"
+        else:
+            rel_status = "UNRELIABLE"
 
         over_gen_risk = "MODERATE" if n_irrel_supp > 0 else "NONE"
 
