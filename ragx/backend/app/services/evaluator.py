@@ -215,11 +215,12 @@ class EvidenceMatcher:
             has_q_token_overlap = any(t in c_tokens for t in q_tokens) if q_tokens else True
 
             if support_status == "SUPPORTED":
-                if has_q_token_overlap or q_rel_score >= 0.65:
+                if q_rel_score >= 0.65 or (has_q_token_overlap and q_rel_score >= 0.40):
                     relevance_classification = "SUPPORTED_RELEVANT"
                 else:
                     relevance_classification = "SUPPORTED_IRRELEVANT"
                     disparity_detail += " Note: Claim exists in source but is IRRELEVANT to the user's specific question (Over-generation)."
+
 
             elif support_status == "CONTRADICTED":
                 relevance_classification = "CONTRADICTED"
@@ -595,13 +596,20 @@ class AnswerEvaluator:
         else:
             h_risk = "LOW"
 
-        # Reliability Status Bounded Thresholds
-        if composite_score >= 80.0:
-            rel_status = "HIGHLY_RELIABLE"
-        elif composite_score >= 60.0:
-            rel_status = "PARTIALLY_RELIABLE"
+        # Reliability Status Bounded Thresholds (Bounded to PARTIALLY_RELIABLE if unsupported claims exist)
+        if n_contradict > 0 or n_unsupp > 0:
+            if composite_score >= 60.0:
+                rel_status = "PARTIALLY_RELIABLE"
+            else:
+                rel_status = "UNRELIABLE"
         else:
-            rel_status = "UNRELIABLE"
+            if composite_score >= 80.0:
+                rel_status = "HIGHLY_RELIABLE"
+            elif composite_score >= 60.0:
+                rel_status = "PARTIALLY_RELIABLE"
+            else:
+                rel_status = "UNRELIABLE"
+
 
         over_gen_risk = "MODERATE" if n_irrel_supp > 0 else "NONE"
 

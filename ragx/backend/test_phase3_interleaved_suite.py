@@ -35,8 +35,25 @@ def run_test_query(query: str, step_label: str):
     print(f"Reliability Status    : {status}")
     print(f"Failure Category      : {fail_cat}")
     print(f"Hallucination Risk    : {h_risk}")
-    print(f"Extracted Claims Count: {len(claims)}")
-    print(f"Question Aspect Coverage: {coverage.get('coverage_ratio', 1.0)} ({coverage.get('covered_aspects', 1)}/{coverage.get('total_aspects', 1)} aspects)")
+    # Verify 5-tuple citation traceability for supported claims:
+    # 1. claim_id, 2. claim_text, 3. chunk_id, 4. source_file, 5. page_number
+    traceable_claims_count = 0
+    for claim in claims:
+        if claim.get("support_status") == "SUPPORTED":
+            matched_ev = claim.get("matched_evidence", {})
+            has_valid_5_tuple = (
+                bool(claim.get("claim_id")) and
+                bool(claim.get("claim_text")) and
+                claim.get("citation_traceable") is True and
+                matched_ev.get("chunk_id") != "N/A" and
+                matched_ev.get("source_file") != "Unknown" and
+                matched_ev.get("page_number") is not None
+            )
+            assert has_valid_5_tuple, f"5-tuple citation proof broken for claim {claim.get('claim_id')}"
+            traceable_claims_count += 1
+
+    print(f"5-Tuple Citation Verified: {traceable_claims_count} supported claims fully traceable to (Claim ID -> Claim Text -> Chunk ID -> Document Name -> Page Number).")
+
 
     return {
         "query": query,
@@ -48,8 +65,10 @@ def run_test_query(query: str, step_label: str):
         "failure_category": fail_cat,
         "h_risk": h_risk,
         "claims_count": len(claims),
-        "coverage_ratio": coverage.get('coverage_ratio', 1.0)
+        "coverage_ratio": coverage.get('coverage_ratio', 1.0),
+        "traceable_claims": traceable_claims_count
     }
+
 
 def main():
     print("Starting RAGX Phase 3 Multi-Aspect & Interleaved Regression Test Suite...")

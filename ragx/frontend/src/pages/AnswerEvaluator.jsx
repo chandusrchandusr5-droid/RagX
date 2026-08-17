@@ -316,7 +316,7 @@ export default function AnswerEvaluator() {
                   <div className="md:col-span-3 space-y-3">
                     <div>
                       <div className="flex justify-between text-xs font-medium mb-1">
-                        <span className="text-slate-300">Claim Support Score (S_supp - 50%)</span>
+                        <span className="text-slate-300">Claim Support Score (S_supp - {((report.scoring_breakdown?.configured_weights?.support_weight || 0.6) * 100).toFixed(0)}%)</span>
                         <span className="text-indigo-400 font-bold">{report.scoring_breakdown?.sub_scores?.claim_support_score}%</span>
                       </div>
                       <div className="w-full bg-slate-900 rounded-full h-2">
@@ -329,7 +329,7 @@ export default function AnswerEvaluator() {
 
                     <div>
                       <div className="flex justify-between text-xs font-medium mb-1">
-                        <span className="text-slate-300">Citation Traceability Score (S_cov - 25%)</span>
+                        <span className="text-slate-300">Citation Traceability Score (S_cov - {((report.scoring_breakdown?.configured_weights?.coverage_weight || 0.2) * 100).toFixed(0)}%)</span>
                         <span className="text-teal-400 font-bold">{report.scoring_breakdown?.sub_scores?.citation_coverage_score}%</span>
                       </div>
                       <div className="w-full bg-slate-900 rounded-full h-2">
@@ -342,10 +342,11 @@ export default function AnswerEvaluator() {
 
                     <div>
                       <div className="flex justify-between text-xs font-medium mb-1">
-                        <span className="text-slate-300">Retrieval Similarity Score (S_sim - 25%)</span>
+                        <span className="text-slate-300">Retrieval Similarity Score (S_sim - {((report.scoring_breakdown?.configured_weights?.similarity_weight || 0.2) * 100).toFixed(0)}%)</span>
                         <span className="text-purple-400 font-bold">{report.scoring_breakdown?.sub_scores?.retrieval_similarity_score}%</span>
                       </div>
                       <div className="w-full bg-slate-900 rounded-full h-2">
+
                         <div
                           className="bg-purple-500 h-2 rounded-full transition-all"
                           style={{ width: `${report.scoring_breakdown?.sub_scores?.retrieval_similarity_score}%` }}
