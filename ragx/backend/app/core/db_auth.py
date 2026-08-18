@@ -71,11 +71,11 @@ def init_auth_db():
     cursor.execute("SELECT id FROM users WHERE role = 'ADMIN' LIMIT 1")
     admin_row = cursor.fetchone()
     if not admin_row:
-        admin_email = "admin@ragx.ai"
+        admin_email = "teamragx@gmail.com"
         cursor.execute("SELECT id FROM users WHERE email = ?", (admin_email,))
         if not cursor.fetchone():
             salt = secrets.token_hex(16)
-            password_hash = hash_password("admin123", salt)
+            password_hash = hash_password("teamrag123", salt)
             admin_id = f"usr_admin_{uuid.uuid4().hex[:8]}"
             now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             cursor.execute("""

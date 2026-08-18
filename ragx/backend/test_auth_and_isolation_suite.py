@@ -43,8 +43,8 @@ class TestAuthAndIsolationSuite(unittest.TestCase):
 
         # 3. Login Admin
         res_admin = client.post("/api/auth/login", json={
-            "email": "admin@ragx.ai",
-            "password": "admin123"
+            "email": "teamragx@gmail.com",
+            "password": "teamrag123"
         })
         cls.token_admin = res_admin.json()["token"]
 
