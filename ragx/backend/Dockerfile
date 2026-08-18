@@ -11,14 +11,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt-get/lists/*
 
 # Copy requirements and install CPU-only PyTorch to prevent heavy 2.5GB CUDA download timeouts
-COPY ragx/backend/requirements.txt* requirements.txt* ./
-RUN if [ -f ragx/backend/requirements.txt ]; then cp ragx/backend/requirements.txt requirements.txt; fi && \
-    pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
+COPY requirements.txt .
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
 
-# Copy application code from root context (ragx/backend) or direct context (.)
-COPY ragx/backend/ /app/
-COPY . /app/
+# Copy application code
+COPY . .
 
 # Environment variables & start command
 ENV PORT=8000
