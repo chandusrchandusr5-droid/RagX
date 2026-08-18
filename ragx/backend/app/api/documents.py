@@ -4,6 +4,7 @@ from pathlib import Path
 import shutil
 import os
 import hashlib
+import uuid
 import logging
 from datetime import datetime
 from app.core.config import settings
@@ -46,23 +47,14 @@ async def upload_document(file: UploadFile = File(...), current_user: dict | Non
     file_hash = calculate_file_hash(save_path)
 
     try:
+        owner_id = current_user["id"] if current_user else "default_workspace"
+
         # Check existing registry record to preserve document_id on re-upload
         existing_doc = DocumentRegistryService.get_document_by_name(filename, status_filter=None, owner_id=owner_id)
+        doc_id = existing_doc.get("document_id") if existing_doc else f"doc_{uuid.uuid4().hex[:12]}"
         
         # Parse document
         parsed_doc = DocumentParser.parse_document(save_path)
-
-        # Register document state first to get/confirm document_id
-        registered = DocumentRegistryService.register_document(
-            document_name=filename,
-            active_path=save_path,
-            total_pages=parsed_doc["total_pages"],
-            total_chunks=0,
-            file_size_str=f"{file_size_kb} KB",
-            file_hash=file_hash,
-            owner_id=owner_id
-        )
-        doc_id = registered["document_id"]
 
         # Purge any existing vector chunks for this document_id prior to indexing
         vector_db.delete_document_chunks_by_id(doc_id, owner_id=owner_id)
@@ -75,15 +67,23 @@ async def upload_document(file: UploadFile = File(...), current_user: dict | Non
             owner_id=owner_id
         )
 
-        # Update final chunk count
-        updated_doc = DocumentRegistryService.update_document_chunks(doc_id, num_chunks)
+        # Register document state in a single clean write
+        registered = DocumentRegistryService.register_document(
+            document_name=filename,
+            active_path=save_path,
+            total_pages=parsed_doc["total_pages"],
+            total_chunks=num_chunks,
+            file_size_str=f"{file_size_kb} KB",
+            file_hash=file_hash,
+            owner_id=owner_id
+        )
 
         if current_user:
             AuthService.log_activity(current_user["id"], current_user["full_name"], current_user["email"], "PDF Uploaded", f"Uploaded document '{filename}'.")
 
         return {
             "message": "Document uploaded and indexed successfully",
-            "document": updated_doc or registered
+            "document": registered
         }
 
     except Exception as e:

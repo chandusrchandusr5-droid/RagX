@@ -34,9 +34,10 @@ class DocumentRegistryService:
     def get_all_documents(cls, status_filter: str = None, owner_id: str = None) -> list[dict]:
         records = cls._load_registry()
         filtered = []
+        allowed_owners = {owner_id} if owner_id else {"default_workspace", "legacy_dev_owner"}
         for r in records:
-            r_owner = r.get("owner_id", "legacy_dev_owner")
-            if owner_id is not None and r_owner != owner_id:
+            r_owner = r.get("owner_id", "default_workspace")
+            if r_owner not in allowed_owners:
                 continue
             if status_filter and r.get("status") != status_filter:
                 continue
@@ -46,20 +47,22 @@ class DocumentRegistryService:
     @classmethod
     def get_document_by_id(cls, document_id: str, owner_id: str = None) -> dict | None:
         records = cls._load_registry()
+        allowed_owners = {owner_id} if owner_id else {"default_workspace", "legacy_dev_owner"}
         for r in records:
             if r.get("document_id") == document_id:
-                r_owner = r.get("owner_id", "legacy_dev_owner")
-                if owner_id is None or r_owner == owner_id:
+                r_owner = r.get("owner_id", "default_workspace")
+                if r_owner in allowed_owners:
                     return r
         return None
 
     @classmethod
     def get_document_by_name(cls, document_name: str, status_filter: str = "ACTIVE", owner_id: str = None) -> dict | None:
         records = cls._load_registry()
+        allowed_owners = {owner_id} if owner_id else {"default_workspace", "legacy_dev_owner"}
         for r in records:
             if r.get("document_name") == document_name:
-                r_owner = r.get("owner_id", "legacy_dev_owner")
-                if owner_id is None or r_owner == owner_id:
+                r_owner = r.get("owner_id", "default_workspace")
+                if r_owner in allowed_owners:
                     if status_filter is None or r.get("status") == status_filter:
                         return r
         return None

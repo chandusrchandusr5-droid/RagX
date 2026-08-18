@@ -197,56 +197,47 @@ class DataQualityService:
 
                 if embeddings is not None and len(embeddings) > 1:
                     threshold = settings.CHUNK_DUPLICATE_THRESHOLD
-                    top_k = min(10, len(embeddings))
+                    try:
+                        import numpy as np
+                        embs_arr = np.array(embeddings)
+                        norms = np.linalg.norm(embs_arr, axis=1, keepdims=True) + 1e-9
+                        norm_embs = embs_arr / norms
+                        sim_matrix = np.dot(norm_embs, norm_embs.T)
 
-                    # Query Top-K nearest neighbors using ChromaDB ANN vector search
-                    for i, emb in enumerate(embeddings):
-                        chunk_id_i = metadatas[i].get("chunk_id", f"chunk_{i}")
-                        doc_name_i = metadatas[i].get("document_name", "Unknown")
-                        page_num_i = metadatas[i].get("page_number", 1)
-                        emb_query = emb if isinstance(emb, list) else list(emb)
-
-                        res = vector_db.collection.query(
-                            query_embeddings=[emb_query],
-                            n_results=top_k,
-                            include=["metadatas", "distances", "documents"]
-                        )
-
-                        if res and res.get("distances") and len(res["distances"]) > 0:
-                            dists = res["distances"][0]
-                            metas = res["metadatas"][0]
-                            docs = res["documents"][0]
-
-                            for dist, meta, doc_text in zip(dists, metas, docs):
-                                chunk_id_j = meta.get("chunk_id", "")
-                                doc_name_j = meta.get("document_name", "Unknown")
-
-                                if chunk_id_i != chunk_id_j:
-                                    # Cosine distance to similarity: similarity = 1 - distance
-                                    similarity = round(max(0.0, 1.0 - dist), 4)
-                                    if similarity >= threshold:
-                                        pair_key = tuple(sorted([chunk_id_i, chunk_id_j]))
-                                        if pair_key not in redundant_chunks_set:
-                                            redundant_chunks_set.add(pair_key)
-                                            issues.append({
-                                                "issue_id": f"QUAL-{issue_counter:03d}",
-                                                "issue_type": "HIGH_OVERLAP_CHUNK",
-                                                "category": "REDUNDANCY",
-                                                "issue_status": "DETECTED_ISSUE",
-                                                "confidence": 0.92,
-                                                "severity": "WARNING",
-                                                "title": "High Semantic Overlap Between Chunks",
-                                                "source_file": doc_name_i,
-                                                "page_number": page_num_i,
-                                                "chunk_id": chunk_id_i,
-                                                "related_file": doc_name_j,
-                                                "evidence_snippet": documents[i][:80] + "...",
-                                                "related_snippet": doc_text[:80] + "...",
-                                                "potential_rag_impact": f"Chunks share {similarity * 100:.1f}% semantic similarity. Consumes top-K retrieval slots with duplicate information.",
-                                                "remediation": "Adjust chunk overlap parameters or remove duplicate document passages.",
-                                                "demonstrated_impact": None
-                                            })
-                                            issue_counter += 1
+                        n = len(embeddings)
+                        for i in range(n):
+                            chunk_id_i = metadatas[i].get("chunk_id", f"chunk_{i}")
+                            doc_name_i = metadatas[i].get("document_name", "Unknown")
+                            page_num_i = metadatas[i].get("page_number", 1)
+                            for j in range(i + 1, n):
+                                similarity = float(sim_matrix[i, j])
+                                if similarity >= threshold:
+                                    chunk_id_j = metadatas[j].get("chunk_id", f"chunk_{j}")
+                                    doc_name_j = metadatas[j].get("document_name", "Unknown")
+                                    pair_key = (chunk_id_i, chunk_id_j)
+                                    if pair_key not in redundant_chunks_set:
+                                        redundant_chunks_set.add(pair_key)
+                                        issues.append({
+                                            "issue_id": f"QUAL-{issue_counter:03d}",
+                                            "issue_type": "HIGH_OVERLAP_CHUNK",
+                                            "category": "REDUNDANCY",
+                                            "issue_status": "DETECTED_ISSUE",
+                                            "confidence": 0.92,
+                                            "severity": "WARNING",
+                                            "title": "High Semantic Overlap Between Chunks",
+                                            "source_file": doc_name_i,
+                                            "page_number": page_num_i,
+                                            "chunk_id": chunk_id_i,
+                                            "related_file": doc_name_j,
+                                            "evidence_snippet": documents[i][:80] + "...",
+                                            "related_snippet": documents[j][:80] + "...",
+                                            "potential_rag_impact": f"Chunks share {similarity * 100:.1f}% semantic similarity. Consumes top-K retrieval slots with duplicate information.",
+                                            "remediation": "Adjust chunk overlap parameters or remove duplicate document passages.",
+                                            "demonstrated_impact": None
+                                        })
+                                        issue_counter += 1
+                    except Exception as e:
+                        logger.error(f"Error performing similarity matrix calculation: {e}")
 
                 # Calculate unique redundant chunks count
                 unique_redundant_ids = set()

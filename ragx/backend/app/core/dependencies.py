@@ -1,28 +1,36 @@
-from fastapi import Header, HTTPException, Depends
+from fastapi import Header, Query, HTTPException, Depends
 from typing import Optional
 from app.services.auth_service import AuthService
 
-async def get_optional_user(authorization: Optional[str] = Header(None)) -> Optional[dict]:
+async def get_optional_user(
+    authorization: Optional[str] = Header(None),
+    token: Optional[str] = Query(None)
+) -> Optional[dict]:
     """
-    Extracts Bearer token from Authorization header if present and returns user info.
-    Does not raise exception if token is missing.
+    Extracts Bearer token from Authorization header or ?token= query parameter if present.
+    Returns authenticated user dict or None if unauthenticated.
     """
-    if not authorization:
-        return None
-    token = authorization.replace("Bearer ", "").strip()
-    return AuthService.validate_session(token)
+    tok = None
+    if authorization and authorization.startswith("Bearer "):
+        tok = authorization.replace("Bearer ", "").strip()
+    elif token:
+        tok = token.strip()
 
-async def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
+    if not tok:
+        return None
+    return AuthService.validate_session(tok)
+
+async def get_current_user(
+    authorization: Optional[str] = Header(None),
+    token: Optional[str] = Query(None)
+) -> dict:
     """
     Strict server-side authentication dependency.
     Raises HTTP 401 Unauthorized if token is missing, invalid, or expired.
     """
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Authentication token required.")
-    token = authorization.replace("Bearer ", "").strip()
-    user = AuthService.validate_session(token)
+    user = await get_optional_user(authorization=authorization, token=token)
     if not user:
-        raise HTTPException(status_code=401, detail="Invalid or expired session token. Please log in again.")
+        raise HTTPException(status_code=401, detail="Authentication token required or expired. Please log in.")
     return user
 
 async def get_admin_user(current_user: dict = Depends(get_current_user)) -> dict:

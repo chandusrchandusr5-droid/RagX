@@ -110,14 +110,16 @@ class VectorDBManager:
 
         candidate_chunks = {}
 
+        allowed_owners = {owner_id} if owner_id else {"default_workspace", "legacy_dev_owner"}
+
         if results and results.get("documents") and len(results["documents"]) > 0:
             docs = results["documents"][0]
             metas = results["metadatas"][0]
             dists = results["distances"][0]
 
             for doc, meta, dist in zip(docs, metas, dists):
-                m_owner = meta.get("owner_id", "legacy_dev_owner")
-                if owner_id is not None and m_owner != owner_id:
+                m_owner = meta.get("owner_id", "default_workspace")
+                if m_owner not in allowed_owners:
                     continue
 
                 v_sim = round(max(0.0, 1.0 - dist), 4)
@@ -141,8 +143,8 @@ class VectorDBManager:
                 all_metas = all_db["metadatas"]
                 
                 for a_doc, a_meta in zip(all_docs, all_metas):
-                    m_owner = a_meta.get("owner_id", "legacy_dev_owner")
-                    if owner_id is not None and m_owner != owner_id:
+                    m_owner = a_meta.get("owner_id", "default_workspace")
+                    if m_owner not in allowed_owners:
                         continue
 
                     c_id = a_meta.get("chunk_id", "")
@@ -168,22 +170,24 @@ class VectorDBManager:
 
     def get_all_chunks(self, owner_id: str = None) -> dict:
         kwargs = {"include": ["documents", "metadatas", "embeddings"]}
-        if owner_id:
-            kwargs["where"] = {"owner_id": owner_id}
         try:
             results = self.collection.get(**kwargs)
         except Exception:
             results = self.collection.get(include=["documents", "metadatas", "embeddings"])
-            if results and results.get("metadatas") and owner_id:
-                # Manual filtering fallback
-                docs, metas, ids, embs = [], [], [], []
-                for doc, meta, cid in zip(results["documents"], results["metadatas"], results["ids"]):
-                    m_owner = meta.get("owner_id", "legacy_dev_owner")
-                    if m_owner == owner_id:
-                        docs.append(doc)
-                        metas.append(meta)
-                        ids.append(cid)
-                results = {"documents": docs, "metadatas": metas, "ids": ids}
+
+        if results and results.get("metadatas"):
+            allowed_owners = {owner_id} if owner_id else {"default_workspace", "legacy_dev_owner"}
+            docs, metas, ids, embs = [], [], [], []
+            raw_embs = results.get("embeddings")
+            for i, (doc, meta, cid) in enumerate(zip(results["documents"], results["metadatas"], results["ids"])):
+                m_owner = meta.get("owner_id", "default_workspace")
+                if m_owner in allowed_owners:
+                    docs.append(doc)
+                    metas.append(meta)
+                    ids.append(cid)
+                    if raw_embs is not None and len(raw_embs) > i:
+                        embs.append(raw_embs[i])
+            results = {"documents": docs, "metadatas": metas, "ids": ids, "embeddings": embs if embs else None}
         return results
 
     def delete_document_chunks_by_id(self, document_id: str, owner_id: str = None) -> int:
