@@ -196,7 +196,9 @@ class EvidenceMatcher:
             clean_c = re.sub(r'[^a-z0-9]', '', c_text_clean.lower())
             clean_ev = re.sub(r'[^a-z0-9]', '', ev_text.lower())
 
-            if clean_c and len(clean_c) >= 2 and (clean_c in clean_ev or clean_c[:30] in clean_ev):
+            is_substring_match = bool(clean_c and len(clean_c) >= 2 and (clean_c in clean_ev or clean_c[:30] in clean_ev))
+
+            if is_substring_match:
                 best_sim = max(best_sim, 0.90)
 
             all_top_sims.append(best_sim)
@@ -205,13 +207,41 @@ class EvidenceMatcher:
             claim_nums = num_pattern.findall(c_text.lower())
             ev_nums = num_pattern.findall(ev_text.lower())
 
-            # Determine Factual Support Status
-            if claim_nums and ev_nums and not set(claim_nums).issubset(set(ev_nums)) and best_sim >= 0.60:
+            # Extract significant content terms from claim and evidence (words length >= 3 not in stopwords)
+            c_content_tokens = [w.lower() for w in re.findall(r'\b[a-zA-Z0-9_]+\b', c_text_clean) if w.lower() not in stopwords and len(w) >= 3]
+            ev_content_tokens = set(w.lower() for w in re.findall(r'\b[a-zA-Z0-9_]+\b', ev_text) if w.lower() not in stopwords and len(w) >= 3)
+
+            # Extract proper nouns / capitalized entity terms from claim text
+            c_entity_tokens = set(w.lower() for w in re.findall(r'\b[A-Z][a-zA-Z0-9_]+\b', c_text) if w.lower() not in stopwords and len(w) >= 3)
+            missing_entity_tokens = [et for et in c_entity_tokens if et not in ev_content_tokens and not any(et.startswith(ev[:4]) or ev.startswith(et[:4]) for ev in ev_content_tokens if len(ev) >= 3)]
+
+            matched_content_tokens = []
+            missing_content_tokens = []
+            for ct in c_content_tokens:
+                if ct in ev_content_tokens or any(ct.startswith(et[:4]) or et.startswith(ct[:4]) or ct[:4] in et for et in ev_content_tokens if len(et) >= 3):
+                    matched_content_tokens.append(ct)
+                else:
+                    missing_content_tokens.append(ct)
+
+            term_coverage_ratio = (len(matched_content_tokens) / len(c_content_tokens)) if c_content_tokens else 1.0
+
+            # Determine Factual Support Status via Generic Proposition Verification
+            if claim_nums and ev_nums and not set(claim_nums).issubset(set(ev_nums)) and best_sim >= 0.50:
                 support_status = "CONTRADICTED"
                 disparity_detail = f"Claim mentions '{', '.join(claim_nums)}' while evidence states '{', '.join(ev_nums)}'."
-            elif best_sim >= 0.60:
+            elif claim_nums and not set(claim_nums).issubset(set(ev_nums)) and not is_substring_match:
+                support_status = "UNSUPPORTED"
+                disparity_detail = f"Claim numeric figures '{', '.join(claim_nums)}' are not established by retrieved evidence."
+            elif missing_entity_tokens and not is_substring_match:
+                support_status = "UNSUPPORTED"
+                disparity_detail = f"Evidence mentions related subject matter, but lacks asserted entity/concept '{missing_entity_tokens[0]}'."
+            elif is_substring_match or (best_sim >= 0.60 and term_coverage_ratio >= 0.50) or (best_sim >= 0.75 and term_coverage_ratio >= 0.40):
                 support_status = "SUPPORTED"
-                disparity_detail = "Claim is semantically supported by retrieved evidence snippet."
+                disparity_detail = "Claim proposition is factually established by retrieved evidence snippet."
+            elif best_sim >= 0.60 and term_coverage_ratio < 0.50:
+                support_status = "UNSUPPORTED"
+                missing_sample = ", ".join(list(dict.fromkeys(missing_content_tokens))[:4])
+                disparity_detail = f"Evidence is topically related (similarity {best_sim:.2f}), but fails to establish specific claim proposition (missing key terms: {missing_sample})."
             elif best_sim >= 0.40:
                 support_status = "UNSUPPORTED"
                 disparity_detail = "Partial semantic overlap, but specific claim facts are absent from evidence."
@@ -421,10 +451,17 @@ class QuestionAspectAnalyzer:
             c_tokens = [w.lower() for w in re.findall(r'\w+', clause) if w.lower() not in ENGLISH_STOPWORDS and len(w) > 2]
             token_match = (sum(1 for t in c_tokens if any(t in core_answer or (len(t) >= 3 and len(at) >= 3 and (t.startswith(at[:4]) or at.startswith(t[:4]))) for at in ans_tokens)) / len(c_tokens)) if c_tokens else 1.0
 
-            # If answer is a bare entity code fragment without predicate content/numbers, aspect is NOT fully fulfilled
+            GENERIC_QUESTION_WORDS = {"what", "how", "why", "when", "where", "who", "which", "is", "are", "was", "were", "formula", "definition", "explanation", "meaning", "details", "overview", "summary"}
+            # Aspect Predicate Coverage: Check non-subject tokens in clause
+            c_predicate_tokens = [w for w in c_tokens if w not in q_proper_nouns and w not in GENERIC_QUESTION_WORDS]
+            c_pred_match = (sum(1 for t in c_predicate_tokens if any(t in core_answer or (len(t) >= 3 and len(at) >= 3 and (t.startswith(at[:4]) or at.startswith(t[:4]))) for at in ans_tokens)) / len(c_predicate_tokens)) if c_predicate_tokens else 1.0
+
+            # If answer is a bare entity code fragment or fails to cover clause predicate tokens, aspect is NOT fully fulfilled
             if is_bare_entity_answer and any(w for w in c_tokens if w not in q_proper_nouns):
                 missing_aspects.append(clause[:60])
-            elif (standalone_ans_nums and not is_bare_entity_answer) or sim >= 0.45 or (token_match >= 0.30 and not is_bare_entity_answer):
+            elif c_predicate_tokens and c_pred_match < 0.25 and not standalone_ans_nums:
+                missing_aspects.append(clause[:60])
+            elif (standalone_ans_nums and not is_bare_entity_answer) or (sim >= 0.50 and token_match >= 0.30 and not is_bare_entity_answer):
                 covered_count += 1
             else:
                 missing_aspects.append(clause[:60])

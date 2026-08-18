@@ -1,9 +1,11 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from app.services.evaluator import AnswerEvaluator
 from app.services.rag_engine import rag_engine
 from app.services.evaluation_history import EvaluationHistoryService
+
+from app.core.dependencies import get_optional_user
 
 router = APIRouter(prefix="/evaluator", tags=["RAG Answer Reliability Evaluator"])
 
@@ -18,15 +20,17 @@ class QueryAndEvaluateRequest(BaseModel):
     top_k: int = 3
 
 @router.post("/evaluate")
-async def evaluate_rag_answer(request: EvaluationRequest):
+async def evaluate_rag_answer(request: EvaluationRequest, current_user: dict | None = Depends(get_optional_user)):
     if not request.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
+
+    owner_id = current_user["id"] if current_user else None
 
     try:
         evidence = request.retrieved_evidence
         if not evidence and request.query.strip():
             # Fallback: Retrieve Top-K evidence from ChromaDB knowledge base if omitted in custom evaluation
-            rag_result = rag_engine.query(question=request.query, top_k=3)
+            rag_result = rag_engine.query(question=request.query, owner_id=owner_id, top_k=3)
             evidence = rag_result.get("retrieved_evidence", [])
 
         service = AnswerEvaluator()
@@ -40,13 +44,15 @@ async def evaluate_rag_answer(request: EvaluationRequest):
         raise HTTPException(status_code=500, detail=f"Answer evaluation failed: {str(e)}")
 
 @router.post("/query-and-evaluate")
-async def query_and_evaluate_rag(request: QueryAndEvaluateRequest):
+async def query_and_evaluate_rag(request: QueryAndEvaluateRequest, current_user: dict | None = Depends(get_optional_user)):
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
+    owner_id = current_user["id"] if current_user else None
+
     try:
         # Step 1: Execute RAG Pipeline Query
-        rag_result = rag_engine.query(question=request.question, top_k=request.top_k)
+        rag_result = rag_engine.query(question=request.question, owner_id=owner_id, top_k=request.top_k)
         
         # Step 2: Execute Answer Reliability Evaluation
         service = AnswerEvaluator()

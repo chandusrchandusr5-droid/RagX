@@ -31,27 +31,37 @@ class DocumentRegistryService:
             logger.error(f"Failed to save document registry file '{registry_file}': {e}")
 
     @classmethod
-    def get_all_documents(cls, status_filter: str = None) -> list[dict]:
+    def get_all_documents(cls, status_filter: str = None, owner_id: str = None) -> list[dict]:
         records = cls._load_registry()
-        if status_filter:
-            return [r for r in records if r.get("status") == status_filter]
-        return records
+        filtered = []
+        for r in records:
+            r_owner = r.get("owner_id", "legacy_dev_owner")
+            if owner_id is not None and r_owner != owner_id:
+                continue
+            if status_filter and r.get("status") != status_filter:
+                continue
+            filtered.append(r)
+        return filtered
 
     @classmethod
-    def get_document_by_id(cls, document_id: str) -> dict | None:
+    def get_document_by_id(cls, document_id: str, owner_id: str = None) -> dict | None:
         records = cls._load_registry()
         for r in records:
             if r.get("document_id") == document_id:
-                return r
+                r_owner = r.get("owner_id", "legacy_dev_owner")
+                if owner_id is None or r_owner == owner_id:
+                    return r
         return None
 
     @classmethod
-    def get_document_by_name(cls, document_name: str, status_filter: str = "ACTIVE") -> dict | None:
+    def get_document_by_name(cls, document_name: str, status_filter: str = "ACTIVE", owner_id: str = None) -> dict | None:
         records = cls._load_registry()
         for r in records:
             if r.get("document_name") == document_name:
-                if status_filter is None or r.get("status") == status_filter:
-                    return r
+                r_owner = r.get("owner_id", "legacy_dev_owner")
+                if owner_id is None or r_owner == owner_id:
+                    if status_filter is None or r.get("status") == status_filter:
+                        return r
         return None
 
     @classmethod
@@ -63,6 +73,7 @@ class DocumentRegistryService:
         total_chunks: int,
         file_size_str: str = "1.0 KB",
         file_hash: str = "dummy_hash",
+        owner_id: str = "legacy_dev_owner",
         registry_file_path: Path = None,
         uploads_dir_path: Path = None,
         trash_dir_path: Path = None
@@ -70,10 +81,9 @@ class DocumentRegistryService:
         records = cls._load_registry(registry_file_path=registry_file_path)
         trash_dir = trash_dir_path or settings.TRASH_DIR
         
-        # Check if an existing document record with same filename exists
-        existing = next((r for r in records if r.get("document_name") == document_name), None)
+        # Check if an existing document record with same filename and owner exists
+        existing = next((r for r in records if r.get("document_name") == document_name and r.get("owner_id", "legacy_dev_owner") == owner_id), None)
 
-        
         doc_id = existing.get("document_id") if existing else f"doc_{uuid.uuid4().hex[:12]}"
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -81,6 +91,7 @@ class DocumentRegistryService:
             "document_id": doc_id,
             "document_name": document_name,
             "original_filename": document_name,
+            "owner_id": owner_id,
             "status": "ACTIVE",
             "active_path": str(active_path),
             "trash_path": str(trash_dir / document_name),
@@ -112,31 +123,41 @@ class DocumentRegistryService:
         return None
 
     @classmethod
-    def soft_delete_document(cls, document_id: str) -> dict | None:
+    def soft_delete_document(cls, document_id: str, owner_id: str = None) -> dict | None:
         records = cls._load_registry()
         for r in records:
             if r.get("document_id") == document_id:
-                r["status"] = "DELETED"
-                r["deletion_date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                cls._save_registry(records)
-                return r
+                r_owner = r.get("owner_id", "legacy_dev_owner")
+                if owner_id is None or r_owner == owner_id:
+                    r["status"] = "DELETED"
+                    r["deletion_date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    cls._save_registry(records)
+                    return r
         return None
 
     @classmethod
-    def restore_document(cls, document_id: str) -> dict | None:
+    def restore_document(cls, document_id: str, owner_id: str = None) -> dict | None:
         records = cls._load_registry()
         for r in records:
             if r.get("document_id") == document_id:
-                r["status"] = "ACTIVE"
-                r["deletion_date"] = None
-                cls._save_registry(records)
-                return r
+                r_owner = r.get("owner_id", "legacy_dev_owner")
+                if owner_id is None or r_owner == owner_id:
+                    r["status"] = "ACTIVE"
+                    r["deletion_date"] = None
+                    cls._save_registry(records)
+                    return r
         return None
 
     @classmethod
-    def permanently_delete_document(cls, document_id: str) -> dict | None:
+    def permanently_delete_document(cls, document_id: str, owner_id: str = None) -> dict | None:
         records = cls._load_registry()
-        target = next((r for r in records if r.get("document_id") == document_id), None)
+        target = None
+        for r in records:
+            if r.get("document_id") == document_id:
+                r_owner = r.get("owner_id", "legacy_dev_owner")
+                if owner_id is None or r_owner == owner_id:
+                    target = r
+                    break
         if target:
             records = [r for r in records if r.get("document_id") != document_id]
             cls._save_registry(records)

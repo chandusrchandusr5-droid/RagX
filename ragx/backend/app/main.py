@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
+from app.api.auth_api import router as auth_router
+from app.api.admin_api import router as admin_router
 from app.api.documents import router as documents_router
 from app.api.rag import router as rag_router
 from app.api.quality import router as quality_router
@@ -10,7 +12,7 @@ from app.api.nova_api import router as nova_router
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description="RAGX Backend API — Data Quality & Answer Reliability Evaluation Engine",
-    version="3.1.0"
+    version="3.2.0"
 )
 
 # Enable CORS for local Vite React development
@@ -23,6 +25,8 @@ app.add_middleware(
 )
 
 # Include API Routers
+app.include_router(auth_router, prefix=settings.API_PREFIX)
+app.include_router(admin_router, prefix=settings.API_PREFIX)
 app.include_router(documents_router, prefix=settings.API_PREFIX)
 app.include_router(rag_router, prefix=settings.API_PREFIX)
 app.include_router(quality_router, prefix=settings.API_PREFIX)

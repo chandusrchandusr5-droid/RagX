@@ -85,17 +85,28 @@ class VectorDBManager:
         return hybrid_sim
 
 
-    def query_similar(self, query_text: str, top_k: int = None, min_similarity: float = 0.35) -> list[dict]:
+    def query_similar(self, query_text: str, owner_id: str = None, top_k: int = None, min_similarity: float = 0.35) -> list[dict]:
         if top_k is None:
             top_k = settings.TOP_K_RETRIEVAL
 
-        # 1. Vector Search Query
+        # 1. Vector Search Query with owner_id filter
         query_embedding = self.get_embedding(query_text)
-        results = self.collection.query(
-            query_embeddings=[query_embedding],
-            n_results=top_k,
-            include=["documents", "metadatas", "distances"]
-        )
+        where_clause = {"owner_id": owner_id} if owner_id else None
+        
+        query_kwargs = {
+            "query_embeddings": [query_embedding],
+            "n_results": top_k,
+            "include": ["documents", "metadatas", "distances"]
+        }
+        if where_clause:
+            query_kwargs["where"] = where_clause
+
+        try:
+            results = self.collection.query(**query_kwargs)
+        except Exception as e:
+            logger.warning(f"ChromaDB query with where_clause failed: {e}. Retrying without metadata filter.")
+            query_kwargs.pop("where", None)
+            results = self.collection.query(**query_kwargs)
 
         candidate_chunks = {}
 
@@ -105,6 +116,10 @@ class VectorDBManager:
             dists = results["distances"][0]
 
             for doc, meta, dist in zip(docs, metas, dists):
+                m_owner = meta.get("owner_id", "legacy_dev_owner")
+                if owner_id is not None and m_owner != owner_id:
+                    continue
+
                 v_sim = round(max(0.0, 1.0 - dist), 4)
                 h_sim = self._compute_hybrid_score(query_text, doc, v_sim)
                 c_id = meta.get("chunk_id", f"chunk_{len(candidate_chunks)}")
@@ -114,17 +129,22 @@ class VectorDBManager:
                     "document_name": meta.get("document_name", "Unknown"),
                     "page_number": meta.get("page_number", 1),
                     "chunk_id": c_id,
-                    "similarity_score": h_sim
+                    "similarity_score": h_sim,
+                    "owner_id": m_owner
                 }
 
         # 2. Case-Insensitive Full KB Scan for entity/phrase query candidates
         try:
-            all_db = self.get_all_chunks()
+            all_db = self.get_all_chunks(owner_id=owner_id)
             if all_db and all_db.get("documents"):
                 all_docs = all_db["documents"]
                 all_metas = all_db["metadatas"]
                 
                 for a_doc, a_meta in zip(all_docs, all_metas):
+                    m_owner = a_meta.get("owner_id", "legacy_dev_owner")
+                    if owner_id is not None and m_owner != owner_id:
+                        continue
+
                     c_id = a_meta.get("chunk_id", "")
                     if c_id not in candidate_chunks:
                         h_sim = self._compute_hybrid_score(query_text, a_doc, 0.0)
@@ -134,7 +154,8 @@ class VectorDBManager:
                                 "document_name": a_meta.get("document_name", "Unknown"),
                                 "page_number": a_meta.get("page_number", 1),
                                 "chunk_id": c_id,
-                                "similarity_score": h_sim
+                                "similarity_score": h_sim,
+                                "owner_id": m_owner
                             }
         except Exception as e:
             logger.warning(f"Full-KB lexical scan fallback warning: {e}")
@@ -145,33 +166,56 @@ class VectorDBManager:
 
         return sorted_chunks[:top_k]
 
-    def get_all_chunks(self) -> dict:
-        results = self.collection.get(include=["documents", "metadatas", "embeddings"])
+    def get_all_chunks(self, owner_id: str = None) -> dict:
+        kwargs = {"include": ["documents", "metadatas", "embeddings"]}
+        if owner_id:
+            kwargs["where"] = {"owner_id": owner_id}
+        try:
+            results = self.collection.get(**kwargs)
+        except Exception:
+            results = self.collection.get(include=["documents", "metadatas", "embeddings"])
+            if results and results.get("metadatas") and owner_id:
+                # Manual filtering fallback
+                docs, metas, ids, embs = [], [], [], []
+                for doc, meta, cid in zip(results["documents"], results["metadatas"], results["ids"]):
+                    m_owner = meta.get("owner_id", "legacy_dev_owner")
+                    if m_owner == owner_id:
+                        docs.append(doc)
+                        metas.append(meta)
+                        ids.append(cid)
+                results = {"documents": docs, "metadatas": metas, "ids": ids}
         return results
 
-    def delete_document_chunks_by_id(self, document_id: str) -> int:
+    def delete_document_chunks_by_id(self, document_id: str, owner_id: str = None) -> int:
         """
         Deletes all vector chunks from ChromaDB collection matching document_id (or fallback document_name).
         Returns the count of deleted chunks.
         """
         try:
-            results = self.collection.get(where={"document_id": document_id})
+            where_clause = {"document_id": document_id}
+            results = self.collection.get(where=where_clause)
             if not results or not results.get("ids"):
                 results = self.collection.get(where={"document_name": document_id})
                 if not results or not results.get("ids"):
                     return 0
 
-            chunk_ids = results["ids"]
+            chunk_ids = []
+            if results and results.get("ids"):
+                for cid, meta in zip(results["ids"], results["metadatas"]):
+                    m_owner = meta.get("owner_id", "legacy_dev_owner")
+                    if owner_id is None or m_owner == owner_id:
+                        chunk_ids.append(cid)
+
             if chunk_ids:
                 self.collection.delete(ids=chunk_ids)
-                logger.info(f"Deleted {len(chunk_ids)} vector chunks for document_id '{document_id}' from ChromaDB.")
+                logger.info(f"Deleted {len(chunk_ids)} vector chunks for document_id '{document_id}' (owner '{owner_id}') from ChromaDB.")
             return len(chunk_ids)
         except Exception as e:
             logger.error(f"Error deleting vector chunks for document_id '{document_id}': {e}")
             return 0
 
-    def delete_document_chunks(self, document_name: str) -> int:
-        return self.delete_document_chunks_by_id(document_name)
+    def delete_document_chunks(self, document_name: str, owner_id: str = None) -> int:
+        return self.delete_document_chunks_by_id(document_name, owner_id=owner_id)
 
 
     def reset_collection(self):

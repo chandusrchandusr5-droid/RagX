@@ -49,7 +49,7 @@ class RAGEngine:
         return chunks
 
     @classmethod
-    def index_document_chunks(cls, file_name: str, pages: list[dict], document_id: str = None) -> int:
+    def index_document_chunks(cls, file_name: str, pages: list[dict], document_id: str = None, owner_id: str = "legacy_dev_owner") -> int:
         chunks = cls.chunk_pages(file_name, pages)
         if not chunks:
             return 0
@@ -62,7 +62,8 @@ class RAGEngine:
                 "document_id": doc_id,
                 "document_name": c["document_name"],
                 "page_number": c["page_number"],
-                "chunk_id": c["id"]
+                "chunk_id": c["id"],
+                "owner_id": owner_id
             }
             for c in chunks
         ]
@@ -266,8 +267,8 @@ Answer clearly, concisely, and specifically based strictly on the context above:
 
 
     @classmethod
-    def query(cls, question: str, top_k: int = None) -> dict:
-        retrieved_chunks = vector_db.query_similar(question, top_k=top_k)
+    def query(cls, question: str, owner_id: str = None, top_k: int = None) -> dict:
+        retrieved_chunks = vector_db.query_similar(question, owner_id=owner_id, top_k=top_k)
         answer = cls.generate_llm_response(question, retrieved_chunks)
 
         return {

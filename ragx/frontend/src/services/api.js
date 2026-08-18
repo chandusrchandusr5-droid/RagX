@@ -8,6 +8,85 @@ const apiClient = axios.create({
   baseURL: API_BASE_URL,
 });
 
+// Dynamic Authorization Header Interceptor
+apiClient.interceptors.request.use((config) => {
+  const token = localStorage.getItem('ragx_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// --- AUTHENTICATION APIS ---
+export const registerUser = async (email, fullName, password) => {
+  const response = await apiClient.post('/auth/register', { email, full_name: fullName, password });
+  return response.data;
+};
+
+export const loginUser = async (email, password) => {
+  const response = await apiClient.post('/auth/login', { email, password });
+  return response.data;
+};
+
+export const logoutUser = async () => {
+  try {
+    const response = await apiClient.post('/auth/logout');
+    return response.data;
+  } catch (e) {
+    return { message: "Logged out locally" };
+  }
+};
+
+export const fetchCurrentUser = async () => {
+  const response = await apiClient.get('/auth/me');
+  return response.data;
+};
+
+export const updateProfile = async (fullName) => {
+  const response = await apiClient.put('/auth/profile', { full_name: fullName });
+  return response.data;
+};
+
+export const changePassword = async (currentPassword, newPassword) => {
+  const response = await apiClient.post('/auth/change-password', {
+    current_password: currentPassword,
+    new_password: newPassword,
+  });
+  return response.data;
+};
+
+export const deleteAccount = async () => {
+  const response = await apiClient.delete('/auth/account');
+  return response.data;
+};
+
+// --- ADMIN APIS ---
+export const fetchAdminDashboard = async () => {
+  const response = await apiClient.get('/admin/dashboard');
+  return response.data;
+};
+
+export const fetchAdminUsers = async () => {
+  const response = await apiClient.get('/admin/users');
+  return response.data;
+};
+
+export const fetchAdminUserDocuments = async (userId) => {
+  const response = await apiClient.get(`/admin/users/${encodeURIComponent(userId)}/documents`);
+  return response.data;
+};
+
+export const deleteUserAdmin = async (userId) => {
+  const response = await apiClient.delete(`/admin/users/${encodeURIComponent(userId)}`);
+  return response.data;
+};
+
+export const fetchAdminActivity = async (limit = 100) => {
+  const response = await apiClient.get(`/admin/activity?limit=${limit}`);
+  return response.data;
+};
+
+// --- RAG & DOCUMENT APIS ---
 export const uploadDocument = async (file) => {
   const formData = new FormData();
   formData.append('file', file);
@@ -24,7 +103,8 @@ export const fetchDocuments = async (status = null) => {
 };
 
 export const viewDocumentUrl = (documentId) => {
-  return `${API_BASE_URL}/documents/${encodeURIComponent(documentId)}/view`;
+  const token = localStorage.getItem('ragx_token');
+  return `${API_BASE_URL}/documents/${encodeURIComponent(documentId)}/view${token ? `?token=${encodeURIComponent(token)}` : ''}`;
 };
 
 export const softDeleteDocument = async (documentId) => {
