@@ -65,6 +65,12 @@ def init_auth_db():
     )
     """)
 
+    # Indices for high performance
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_activity_logs_ts ON activity_logs(timestamp)")
+
     conn.commit()
 
     # Seed Default Admin Account if missing

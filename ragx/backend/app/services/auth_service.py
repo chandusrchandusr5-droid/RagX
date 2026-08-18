@@ -6,7 +6,17 @@ from app.core.db_auth import get_db_connection, hash_password, verify_password
 
 logger = logging.getLogger("ragx.auth_service")
 
+_SESSION_CACHE = {}
+
 class AuthService:
+    @classmethod
+    def invalidate_session_cache(cls, token: str = None):
+        global _SESSION_CACHE
+        if token:
+            _SESSION_CACHE.pop(token, None)
+        else:
+            _SESSION_CACHE.clear()
+
     @staticmethod
     def log_activity(user_id: str, user_name: str, user_email: str, action: str, details: str = ""):
         try:
@@ -106,6 +116,13 @@ class AuthService:
         if not token:
             return None
 
+        # Check fast in-memory TTL cache (15 seconds)
+        import time
+        now_ts = time.time()
+        cached = _SESSION_CACHE.get(token)
+        if cached and cached["exp_ts"] > now_ts:
+            return cached["user"]
+
         conn = get_db_connection()
         cursor = conn.cursor()
 
@@ -129,7 +146,7 @@ class AuthService:
         if session["status"] != "ACTIVE":
             return None
 
-        return {
+        user_data = {
             "id": session["id"],
             "email": session["email"],
             "full_name": session["full_name"],
@@ -137,11 +154,14 @@ class AuthService:
             "status": session["status"],
             "created_at": session["created_at"]
         }
+        _SESSION_CACHE[token] = {"user": user_data, "exp_ts": now_ts + 15}
+        return user_data
 
     @classmethod
     def logout_session(cls, token: str, user: dict = None):
         if not token:
             return
+        cls.invalidate_session_cache(token)
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM sessions WHERE token = ?", (token,))
@@ -197,6 +217,7 @@ class AuthService:
         conn.commit()
         conn.close()
 
+        cls.invalidate_session_cache()
         cls.log_activity(user["id"], user["full_name"], user["email"], "Password Changed", "User changed password.")
 
     @classmethod
@@ -212,6 +233,7 @@ class AuthService:
             cursor.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
             conn.commit()
         conn.close()
+        cls.invalidate_session_cache()
 
     @classmethod
     def get_all_users_admin(cls) -> list[dict]:

@@ -17,14 +17,24 @@ import {
 import { queryAndEvaluateRag, evaluateAnswer } from '../services/api';
 
 export default function AnswerEvaluator() {
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(() => localStorage.getItem('ragx_last_eval_query') || '');
   const [useCustomOverride, setUseCustomOverride] = useState(false);
   const [customAnswer, setCustomAnswer] = useState('');
   const [customEvidenceText, setCustomEvidenceText] = useState('');
   
   const [loading, setLoading] = useState(false);
-  const [report, setReport] = useState(null);
-  const [ragResult, setRagResult] = useState(null);
+  const [report, setReport] = useState(() => {
+    try {
+      const saved = localStorage.getItem('ragx_last_eval_report');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) { return null; }
+  });
+  const [ragResult, setRagResult] = useState(() => {
+    try {
+      const saved = localStorage.getItem('ragx_last_eval_rag');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) { return null; }
+  });
   const [error, setError] = useState(null);
 
   const handleRunEvaluation = async (e) => {
@@ -33,19 +43,21 @@ export default function AnswerEvaluator() {
 
     setLoading(true);
     setError(null);
-    setReport(null);
-    setRagResult(null);
 
     try {
       if (!useCustomOverride) {
         // Mode 1: Dynamic RAG Retrieval & Answer Evaluation via Backend RAG Pipeline
         const res = await queryAndEvaluateRag(query.trim(), 3);
-        setRagResult({
+        const ragRes = {
           question: res.question,
           answer: res.answer,
           retrieved_evidence: res.retrieved_evidence || []
-        });
+        };
+        setRagResult(ragRes);
         setReport(res.evaluation_report);
+        localStorage.setItem('ragx_last_eval_query', query.trim());
+        localStorage.setItem('ragx_last_eval_rag', JSON.stringify(ragRes));
+        localStorage.setItem('ragx_last_eval_report', JSON.stringify(res.evaluation_report));
       } else {
         // Mode 2: Manual Custom Answer & Context Override (For testing specific edge-case scenarios)
         const customEvidence = customEvidenceText.trim() ? [
@@ -69,12 +81,16 @@ export default function AnswerEvaluator() {
             } : null)
             .filter(Boolean)
         );
-        setRagResult({
+        const ragRes = {
           question: query.trim(),
           answer: customAnswer.trim(),
           retrieved_evidence: displayEvidence
-        });
+        };
+        setRagResult(ragRes);
         setReport(res);
+        localStorage.setItem('ragx_last_eval_query', query.trim());
+        localStorage.setItem('ragx_last_eval_rag', JSON.stringify(ragRes));
+        localStorage.setItem('ragx_last_eval_report', JSON.stringify(res));
       }
     } catch (err) {
       console.error(err);

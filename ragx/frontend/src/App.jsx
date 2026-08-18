@@ -88,12 +88,26 @@ export default function App() {
       />
       
       <main className="flex-1">
-        {activeTab === 'documents' && <Documents />}
-        {activeTab === 'data-quality' && <DataQuality onNavigateToDocs={() => setActiveTab('documents')} />}
-        {activeTab === 'rag-chat' && <RagChat />}
-        {activeTab === 'evaluator' && <AnswerEvaluator />}
-        {activeTab === 'analytics' && <Analytics />}
-        {activeTab === 'admin' && user?.role === 'ADMIN' && <AdminPortal />}
+        <div className={activeTab === 'documents' ? 'block' : 'hidden'}>
+          <Documents />
+        </div>
+        <div className={activeTab === 'data-quality' ? 'block' : 'hidden'}>
+          <DataQuality onNavigateToDocs={() => setActiveTab('documents')} />
+        </div>
+        <div className={activeTab === 'rag-chat' ? 'block' : 'hidden'}>
+          <RagChat />
+        </div>
+        <div className={activeTab === 'evaluator' ? 'block' : 'hidden'}>
+          <AnswerEvaluator />
+        </div>
+        <div className={activeTab === 'analytics' ? 'block' : 'hidden'}>
+          <Analytics />
+        </div>
+        {user?.role === 'ADMIN' && (
+          <div className={activeTab === 'admin' ? 'block' : 'hidden'}>
+            <AdminPortal />
+          </div>
+        )}
       </main>
 
       <NovaWidget activeTab={activeTab} />

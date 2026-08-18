@@ -5,7 +5,12 @@ import { queryAndEvaluateRag } from '../services/api';
 export default function RagChat() {
   const [question, setQuestion] = useState('');
   const [loading, setLoading] = useState(false);
-  const [chatHistory, setChatHistory] = useState([]);
+  const [chatHistory, setChatHistory] = useState(() => {
+    try {
+      const saved = localStorage.getItem('ragx_chat_history');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) { return []; }
+  });
   const [error, setError] = useState(null);
 
   const handleSubmit = async (e) => {
@@ -29,7 +34,11 @@ export default function RagChat() {
         showEvidence: false,
         showEval: true
       };
-      setChatHistory((prev) => [newEntry, ...prev]);
+      setChatHistory((prev) => {
+        const updated = [newEntry, ...prev];
+        try { localStorage.setItem('ragx_chat_history', JSON.stringify(updated)); } catch (e) {}
+        return updated;
+      });
     } catch (err) {
       console.error(err);
       setError(err.response?.data?.detail || 'Failed to generate RAG response.');
