@@ -110,35 +110,5 @@
     "total_chunks": 143,
     "file_size": "5516.65 KB",
     "file_hash": "1d6af8878fc7cd7fe7cbf9e0b81c54e3"
-  },
-  {
-    "document_id": "doc_baf879c8aee9",
-    "document_name": "test_doc_alpha.txt",
-    "original_filename": "test_doc_alpha.txt",
-    "owner_id": "usr_b614d46e719a",
-    "status": "ACTIVE",
-    "active_path": "C:\\Users\\chand\\OneDrive\\Dokumen\\Desktop\\RagX\\ragx\\backend\\data\\uploads\\test_doc_alpha.txt",
-    "trash_path": "C:\\Users\\chand\\OneDrive\\Dokumen\\Desktop\\RagX\\ragx\\backend\\data\\trash\\test_doc_alpha.txt",
-    "upload_date": "2026-08-18 15:49:51",
-    "deletion_date": null,
-    "total_pages": 1,
-    "total_chunks": 1,
-    "file_size": "0.07 KB",
-    "file_hash": "ca365b2a0498f898b5082df461b5784b"
-  },
-  {
-    "document_id": "doc_fcf025825a62",
-    "document_name": "test_doc_alpha.txt",
-    "original_filename": "test_doc_alpha.txt",
-    "owner_id": "usr_f6d3704e53e8",
-    "status": "ACTIVE",
-    "active_path": "C:\\Users\\chand\\OneDrive\\Dokumen\\Desktop\\RagX\\ragx\\backend\\data\\uploads\\test_doc_alpha.txt",
-    "trash_path": "C:\\Users\\chand\\OneDrive\\Dokumen\\Desktop\\RagX\\ragx\\backend\\data\\trash\\test_doc_alpha.txt",
-    "upload_date": "2026-08-18 16:03:12",
-    "deletion_date": null,
-    "total_pages": 1,
-    "total_chunks": 1,
-    "file_size": "0.07 KB",
-    "file_hash": "ca365b2a0498f898b5082df461b5784b"
   }
 ]

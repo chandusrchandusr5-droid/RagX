@@ -1,6 +1,8 @@
 import unittest
 import os
 import shutil
+import sqlite3
+import json
 import uuid
 from pathlib import Path
 from fastapi.testclient import TestClient
@@ -22,7 +24,7 @@ class TestAuthAndIsolationSuite(unittest.TestCase):
         # 1. Register User A
         res_a = client.post("/api/auth/register", json={
             "email": cls.user_a_email,
-            "full_name": "User Alpha",
+            "full_name": "User Alpha Test",
             "password": cls.pwd
         })
         data_a = res_a.json()
@@ -32,7 +34,7 @@ class TestAuthAndIsolationSuite(unittest.TestCase):
         # 2. Register User B
         res_b = client.post("/api/auth/register", json={
             "email": cls.user_b_email,
-            "full_name": "User Beta",
+            "full_name": "User Beta Test",
             "password": cls.pwd
         })
         data_b = res_b.json()
@@ -45,6 +47,30 @@ class TestAuthAndIsolationSuite(unittest.TestCase):
             "password": "admin123"
         })
         cls.token_admin = res_admin.json()["token"]
+
+    @classmethod
+    def tearDownClass(cls):
+        """Clean up test users, session tokens, activity logs, and registry entries after test run."""
+        try:
+            db_path = Path("data/users.db")
+            if db_path.exists():
+                conn = sqlite3.connect(db_path)
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM users WHERE email LIKE 'user_%@example.com'")
+                cursor.execute("DELETE FROM sessions WHERE user_id NOT IN (SELECT id FROM users)")
+                cursor.execute("DELETE FROM activity_logs WHERE user_email LIKE 'user_%@example.com' OR details LIKE '%test_doc%'")
+                conn.commit()
+                conn.close()
+
+            registry_path = Path("data/document_registry.json")
+            if registry_path.exists():
+                with open(registry_path, "r", encoding="utf-8") as f:
+                    docs = json.load(f)
+                clean_docs = [d for d in docs if not d.get("document_name", "").startswith("test_doc_")]
+                with open(registry_path, "w", encoding="utf-8") as f:
+                    json.dump(clean_docs, f, indent=2)
+        except Exception as e:
+            print(f"tearDownClass cleanup warning: {e}")
 
     def test_01_user_profile_and_password_settings(self):
         """Case 1: Change Name and Change Password."""
@@ -128,7 +154,7 @@ class TestAuthAndIsolationSuite(unittest.TestCase):
         user_c_email = f"user_c_{uuid.uuid4().hex[:6]}@example.com"
         res_c = client.post("/api/auth/register", json={
             "email": user_c_email,
-            "full_name": "User Gamma",
+            "full_name": "User Gamma Test",
             "password": TestAuthAndIsolationSuite.pwd
         })
         token_c = res_c.json()["token"]
@@ -163,13 +189,10 @@ class TestAuthAndIsolationSuite(unittest.TestCase):
 
     def test_06_user_scoped_data_quality_and_analytics(self):
         """Case 6: User-Scoped Data Quality and Evaluator Analytics."""
-        headers_a = {"Authorization": f"Bearer {TestAuthAndIsolationSuite.token_a}"}
-
-        # Create new clean user D with 0 documents
         user_d_email = f"user_d_{uuid.uuid4().hex[:6]}@example.com"
         res_d = client.post("/api/auth/register", json={
             "email": user_d_email,
-            "full_name": "User Delta",
+            "full_name": "User Delta Test",
             "password": TestAuthAndIsolationSuite.pwd
         })
         token_d = res_d.json()["token"]
