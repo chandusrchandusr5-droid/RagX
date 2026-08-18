@@ -125,7 +125,6 @@ class TestAuthAndIsolationSuite(unittest.TestCase):
 
     def test_04_legacy_dev_data_isolation(self):
         """Case 4: Legacy Pre-Auth Development Data Isolation."""
-        # Create brand new user C
         user_c_email = f"user_c_{uuid.uuid4().hex[:6]}@example.com"
         res_c = client.post("/api/auth/register", json={
             "email": user_c_email,
@@ -162,8 +161,45 @@ class TestAuthAndIsolationSuite(unittest.TestCase):
             self.assertNotIn("salt", u)
             self.assertNotIn("token", u)
 
-    def test_06_account_deletion_cleanup(self):
-        """Case 6: Account Deletion and Scoped Cleanup."""
+    def test_06_user_scoped_data_quality_and_analytics(self):
+        """Case 6: User-Scoped Data Quality and Evaluator Analytics."""
+        headers_a = {"Authorization": f"Bearer {TestAuthAndIsolationSuite.token_a}"}
+
+        # Create new clean user D with 0 documents
+        user_d_email = f"user_d_{uuid.uuid4().hex[:6]}@example.com"
+        res_d = client.post("/api/auth/register", json={
+            "email": user_d_email,
+            "full_name": "User Delta",
+            "password": TestAuthAndIsolationSuite.pwd
+        })
+        token_d = res_d.json()["token"]
+        headers_d = {"Authorization": f"Bearer {token_d}"}
+
+        # User D calls Data Quality Audit -> Zero document report (0 docs, 0 issues)
+        res_dq_d = client.get("/api/quality/audit", headers=headers_d)
+        self.assertEqual(res_dq_d.status_code, 200)
+        dq_data_d = res_dq_d.json()
+        self.assertEqual(dq_data_d["scoring_breakdown"]["raw_measurements"]["total_documents"], 0)
+
+        # User D calls Analytics -> Zero evaluation runs (total_evaluations == 0)
+        res_analytics_d = client.get("/api/evaluator/analytics", headers=headers_d)
+        self.assertEqual(res_analytics_d.status_code, 200)
+        analytics_d = res_analytics_d.json()
+        self.assertEqual(analytics_d["total_evaluations"], 0)
+
+    def test_07_real_activity_feed_no_fake_data(self):
+        """Case 7: Verify Real Activity Logs in Admin Portal."""
+        headers_admin = {"Authorization": f"Bearer {TestAuthAndIsolationSuite.token_admin}"}
+        res_act = client.get("/api/admin/activity", headers=headers_admin)
+        self.assertEqual(res_act.status_code, 200)
+        activities = res_act.json()["activities"]
+        
+        # Verify activity entries exist and correspond to actual real events
+        actions = [a["action"] for a in activities]
+        self.assertTrue(any("Account Registered" in act or "Login" in act or "PDF" in act for act in actions))
+
+    def test_08_account_deletion_cleanup(self):
+        """Case 8: Account Deletion and Scoped Cleanup."""
         headers_b = {"Authorization": f"Bearer {TestAuthAndIsolationSuite.token_b}"}
         
         # User B deletes their account

@@ -125,5 +125,20 @@
     "total_chunks": 1,
     "file_size": "0.07 KB",
     "file_hash": "ca365b2a0498f898b5082df461b5784b"
+  },
+  {
+    "document_id": "doc_fcf025825a62",
+    "document_name": "test_doc_alpha.txt",
+    "original_filename": "test_doc_alpha.txt",
+    "owner_id": "usr_f6d3704e53e8",
+    "status": "ACTIVE",
+    "active_path": "C:\\Users\\chand\\OneDrive\\Dokumen\\Desktop\\RagX\\ragx\\backend\\data\\uploads\\test_doc_alpha.txt",
+    "trash_path": "C:\\Users\\chand\\OneDrive\\Dokumen\\Desktop\\RagX\\ragx\\backend\\data\\trash\\test_doc_alpha.txt",
+    "upload_date": "2026-08-18 16:03:12",
+    "deletion_date": null,
+    "total_pages": 1,
+    "total_chunks": 1,
+    "file_size": "0.07 KB",
+    "file_hash": "ca365b2a0498f898b5082df461b5784b"
   }
 ]

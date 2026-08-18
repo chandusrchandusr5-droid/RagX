@@ -1,13 +1,15 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from app.services.data_quality import DataQualityService
+from app.core.dependencies import get_optional_user
 
 router = APIRouter(prefix="/quality", tags=["Data Quality"])
 
 @router.get("/audit")
-async def get_data_quality_audit():
+async def get_data_quality_audit(current_user: dict | None = Depends(get_optional_user)):
+    owner_id = current_user["id"] if current_user else "legacy_dev_owner"
     try:
         service = DataQualityService()
-        report = service.audit_knowledge_base()
+        report = service.audit_knowledge_base(owner_id=owner_id)
         return report
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Data Quality Audit failed: {str(e)}")

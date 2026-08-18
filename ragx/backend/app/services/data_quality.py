@@ -32,11 +32,18 @@ class DataQualityService:
         return any(kw in text_lower for kw in structural_keywords) or len(text.strip().splitlines()) <= 4
 
     @classmethod
-    def audit_knowledge_base(cls, registry_file_path: Path = None, uploads_dir_path: Path = None) -> dict:
+    def audit_knowledge_base(cls, registry_file_path: Path = None, uploads_dir_path: Path = None, owner_id: str = None) -> dict:
+        from app.services.document_registry import DocumentRegistryService
+
         upload_dir = uploads_dir_path or settings.UPLOAD_DIR
-        uploaded_files = [f for f in upload_dir.iterdir() if f.is_file() and f.suffix.lower() in ['.pdf', '.txt', '.md']] if upload_dir.exists() else []
-
-
+        
+        # Filter files by owner_id if owner_id is specified
+        if owner_id:
+            user_docs = DocumentRegistryService.get_all_documents(owner_id=owner_id)
+            user_doc_names = set(d.get("document_name", "") for d in user_docs if d.get("status") == "ACTIVE")
+            uploaded_files = [f for f in upload_dir.iterdir() if f.is_file() and f.name in user_doc_names] if upload_dir.exists() else []
+        else:
+            uploaded_files = [f for f in upload_dir.iterdir() if f.is_file() and f.suffix.lower() in ['.pdf', '.txt', '.md']] if upload_dir.exists() else []
 
         # Raw Measurements Tracker
         raw_measurements = {
@@ -50,25 +57,32 @@ class DataQualityService:
             "conflicting_topics_count": 0
         }
 
-        # Edge Case 1: Empty Knowledge Base
+        # Edge Case 1: Empty Knowledge Base for current user
         if not uploaded_files:
             return {
-                "composite_reliability_score": 0.0,
-                "user_facing_status": "NO_DATA / NOT_EVALUATED",
-                "display_status": "NOT_EVALUATED",
+                "composite_reliability_score": 100.0,
+                "user_facing_status": "GOOD",
+                "display_status": "GOOD",
                 "message": "No documents uploaded yet. Upload documents to perform a Data Quality Audit.",
                 "scoring_breakdown": {
                     "raw_measurements": raw_measurements,
                     "sub_scores": {
-                        "extraction_integrity_score": 0.0,
-                        "vector_diversity_score": 0.0,
-                        "consistency_index": 0.0
+                        "extraction_integrity_score": 100.0,
+                        "vector_diversity_score": 100.0,
+                        "consistency_index": 100.0
                     },
                     "configured_weights": {
                         "extraction_weight": settings.WEIGHT_EXTRACTION,
                         "diversity_weight": settings.WEIGHT_DIVERSITY,
                         "consistency_weight": settings.WEIGHT_CONSISTENCY
                     }
+                },
+                "summary": {
+                    "total_documents": 0,
+                    "total_chunks": 0,
+                    "total_issues_found": 0,
+                    "confirmed_issues": 0,
+                    "suspected_signals": 0
                 },
                 "issues": []
             }
@@ -174,7 +188,7 @@ class DataQualityService:
         # -------------------------------------------------------------
         redundant_chunks_set = set()
         try:
-            all_chunks_data = vector_db.get_all_chunks()
+            all_chunks_data = vector_db.get_all_chunks(owner_id=owner_id)
             if all_chunks_data and all_chunks_data.get("documents"):
                 documents = all_chunks_data["documents"]
                 metadatas = all_chunks_data["metadatas"]

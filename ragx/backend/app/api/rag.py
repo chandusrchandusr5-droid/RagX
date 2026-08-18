@@ -18,6 +18,14 @@ async def query_rag_pipeline(request: QueryRequest, current_user: dict | None = 
 
     try:
         result = rag_engine.query(question=request.question, owner_id=owner_id, top_k=request.top_k)
+        
+        if current_user:
+            from app.services.auth_service import AuthService
+            AuthService.log_activity(
+                current_user["id"], current_user["full_name"], current_user["email"],
+                "RAG Query", f"Executed query: '{request.question[:50]}...'"
+            )
+
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"RAG query execution failed: {str(e)}")

@@ -30,7 +30,7 @@ class EvaluationHistoryService:
             logger.error(f"Failed to save evaluation history file '{history_file}': {e}")
 
     @classmethod
-    def log_evaluation_run(cls, report: dict, history_file_path: Path = None) -> dict:
+    def log_evaluation_run(cls, report: dict, history_file_path: Path = None, owner_id: str = None) -> dict:
         """
         Logs a Phase 3 Answer Evaluation run to persistent evaluation_history.json.
         Retains compact analytics summary fields plus structured claim analysis & 5-tuple citations.
@@ -44,6 +44,7 @@ class EvaluationHistoryService:
 
         history_entry = {
             "evaluation_id": report.get("evaluation_id"),
+            "owner_id": owner_id or report.get("owner_id", "legacy_dev_owner"),
             "timestamp": report.get("timestamp"),
             "query": report.get("query"),
             "generated_answer": report.get("generated_answer"),
@@ -68,20 +69,25 @@ class EvaluationHistoryService:
             records = records[-500:]
 
         cls._save_history(records, history_file_path=history_file_path)
-        logger.info(f"Logged evaluation run '{history_entry['evaluation_id']}' to persistent history.")
+        logger.info(f"Logged evaluation run '{history_entry['evaluation_id']}' for owner '{history_entry['owner_id']}'.")
         return history_entry
 
 
     @classmethod
-    def get_history(cls, limit: int = 50) -> list[dict]:
+    def get_history(cls, limit: int = 50, owner_id: str = None) -> list[dict]:
         records = cls._load_history()
+        if owner_id:
+            records = [r for r in records if r.get("owner_id", "legacy_dev_owner") == owner_id]
         # Sort by timestamp descending
         sorted_records = sorted(records, key=lambda x: x.get("timestamp", ""), reverse=True)
         return sorted_records[:limit]
 
     @classmethod
-    def get_analytics_summary(cls) -> dict:
+    def get_analytics_summary(cls, owner_id: str = None) -> dict:
         records = cls._load_history()
+        if owner_id:
+            records = [r for r in records if r.get("owner_id", "legacy_dev_owner") == owner_id]
+
         total_runs = len(records)
 
         if total_runs == 0:

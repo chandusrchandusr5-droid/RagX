@@ -62,6 +62,17 @@ async def query_and_evaluate_rag(request: QueryAndEvaluateRequest, current_user:
             retrieved_evidence=rag_result.get("retrieved_evidence", [])
         )
 
+        # Save to history with owner_id
+        EvaluationHistoryService.log_evaluation_run(eval_report, owner_id=owner_id)
+
+        # Log Activity if user is logged in
+        if current_user:
+            from app.services.auth_service import AuthService
+            AuthService.log_activity(
+                current_user["id"], current_user["full_name"], current_user["email"],
+                "Answer Evaluation", f"Evaluated query: '{request.question[:50]}...'"
+            )
+
         return {
             "question": request.question,
             "answer": rag_result.get("answer"),
@@ -73,23 +84,24 @@ async def query_and_evaluate_rag(request: QueryAndEvaluateRequest, current_user:
         raise HTTPException(status_code=500, detail=f"RAG query and evaluation failed: {str(e)}")
 
 @router.get("/analytics")
-async def get_evaluation_analytics():
+async def get_evaluation_analytics(current_user: dict | None = Depends(get_optional_user)):
     """
-    Returns aggregate evaluation analytics derived directly from persistent evaluation_history.json.
-    Includes total runs, average Answer Reliability Score, category breakdown, score distribution, and recent runs.
+    Returns aggregate evaluation analytics derived directly from persistent evaluation_history.json for the authenticated user.
     """
+    owner_id = current_user["id"] if current_user else "legacy_dev_owner"
     try:
-        return EvaluationHistoryService.get_analytics_summary()
+        return EvaluationHistoryService.get_analytics_summary(owner_id=owner_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to compute evaluation analytics: {str(e)}")
 
 @router.get("/history")
-async def get_evaluation_history(limit: int = 50):
+async def get_evaluation_history(limit: int = 50, current_user: dict | None = Depends(get_optional_user)):
     """
-    Returns recent persisted evaluation runs for log inspection and audit traceability.
+    Returns recent persisted evaluation runs for log inspection and audit traceability for the authenticated user.
     """
+    owner_id = current_user["id"] if current_user else "legacy_dev_owner"
     try:
-        records = EvaluationHistoryService.get_history(limit=limit)
+        records = EvaluationHistoryService.get_history(limit=limit, owner_id=owner_id)
         return {
             "total_records": len(records),
             "records": records
