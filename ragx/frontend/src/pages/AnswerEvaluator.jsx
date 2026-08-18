@@ -59,10 +59,20 @@ export default function AnswerEvaluator() {
         ] : [];
 
         const res = await evaluateAnswer(query.trim(), customAnswer.trim(), customEvidence);
+        const displayEvidence = customEvidence.length > 0 ? customEvidence : (
+          (res.claim_analysis || [])
+            .map(c => c.matched_evidence ? {
+              chunk_id: c.matched_evidence.chunk_id,
+              document_name: c.matched_evidence.source_file,
+              page_number: c.matched_evidence.page_number,
+              text: c.matched_evidence.evidence_snippet
+            } : null)
+            .filter(Boolean)
+        );
         setRagResult({
           question: query.trim(),
           answer: customAnswer.trim(),
-          retrieved_evidence: customEvidence
+          retrieved_evidence: displayEvidence
         });
         setReport(res);
       }

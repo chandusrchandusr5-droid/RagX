@@ -23,11 +23,17 @@ async def evaluate_rag_answer(request: EvaluationRequest):
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
 
     try:
+        evidence = request.retrieved_evidence
+        if not evidence and request.query.strip():
+            # Fallback: Retrieve Top-K evidence from ChromaDB knowledge base if omitted in custom evaluation
+            rag_result = rag_engine.query(question=request.query, top_k=3)
+            evidence = rag_result.get("retrieved_evidence", [])
+
         service = AnswerEvaluator()
         report = service.evaluate(
             query=request.query,
             answer=request.answer,
-            retrieved_evidence=request.retrieved_evidence or []
+            retrieved_evidence=evidence or []
         )
         return report
     except Exception as e:
