@@ -96,5 +96,19 @@
     "total_chunks": 4,
     "file_size": "369.83 KB",
     "file_hash": "00bc3c7ec699f8b7a22ce916c89f901f"
+  },
+  {
+    "document_id": "doc_e9e6cb9c8896",
+    "document_name": "jess301.pdf",
+    "original_filename": "jess301.pdf",
+    "status": "ACTIVE",
+    "active_path": "C:\\Users\\chand\\OneDrive\\Dokumen\\Desktop\\RagX\\ragx\\backend\\data\\uploads\\jess301.pdf",
+    "trash_path": "C:\\Users\\chand\\OneDrive\\Dokumen\\Desktop\\RagX\\ragx\\backend\\data\\trash\\jess301.pdf",
+    "upload_date": "2026-08-17 21:36:51",
+    "deletion_date": null,
+    "total_pages": 28,
+    "total_chunks": 143,
+    "file_size": "5516.65 KB",
+    "file_hash": "1d6af8878fc7cd7fe7cbf9e0b81c54e3"
   }
 ]
