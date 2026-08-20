@@ -39,9 +39,6 @@ export default function Navbar({ activeTab, setActiveTab, user, onOpenSettings, 
             <div>
               <div className="flex items-center space-x-2">
                 <span className="font-extrabold text-xl tracking-wider text-white">RAG<span className="text-cyan-400">X</span></span>
-                <span className="text-[10px] font-semibold tracking-wide uppercase px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
-                  Answer Reliability &amp; Hallucination Evaluator
-                </span>
               </div>
               <p className="text-xs text-slate-400 hidden md:block">
                 Data Quality &amp; Hallucination Detection for RAG Systems
