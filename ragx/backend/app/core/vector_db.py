@@ -66,7 +66,7 @@ class VectorDBManager:
         """
         Computes case-insensitive continuous hybrid similarity combining vector cosine similarity
         and case-normalized lexical entity overlap.
-        Preserves original document content completely while guaranteeing precise source attribution.
+        Guarantees that strong vector matches are never penalized by query length variations.
         """
         q_tokens = [
             w.lower() for w in re.findall(r'\w+', query_text)
@@ -87,22 +87,27 @@ class VectorDBManager:
         if has_phrase_match:
             lexical_ratio = max(lexical_ratio, 0.95)
 
-        # Smooth continuous hybrid score combining vector similarity and lexical match
-        hybrid_sim = round(0.50 * vector_similarity + 0.50 * lexical_ratio, 4)
+        # Smooth continuous hybrid score that boosts vector similarity without penalizing strong vector matches
+        hybrid_sim = round(max(vector_similarity, 0.60 * vector_similarity + 0.40 * lexical_ratio), 4)
         return hybrid_sim
 
 
-    def query_similar(self, query_text: str, owner_id: str = None, top_k: int = None, min_similarity: float = 0.35) -> list[dict]:
+    def query_similar(self, query_text: str, owner_id: str = None, top_k: int = None, min_similarity: float = 0.20) -> list[dict]:
         if top_k is None:
             top_k = settings.TOP_K_RETRIEVAL
 
+        allowed_owners = {owner_id, "default_workspace", "legacy_dev_owner"} if owner_id else {"default_workspace", "legacy_dev_owner"}
+
         # 1. Vector Search Query with owner_id filter
         query_embedding = self.get_embedding(query_text)
-        where_clause = {"owner_id": owner_id} if owner_id else None
+        where_clause = {"owner_id": {"$in": list(allowed_owners)}}
         
+        # Retrieve extra candidate slots to prevent HNSW top_k truncation
+        n_fetch = max(top_k * 5, 25)
+
         query_kwargs = {
             "query_embeddings": [query_embedding],
-            "n_results": top_k,
+            "n_results": n_fetch,
             "include": ["documents", "metadatas", "distances"]
         }
         if where_clause:
@@ -116,8 +121,6 @@ class VectorDBManager:
             results = self.collection.query(**query_kwargs)
 
         candidate_chunks = {}
-
-        allowed_owners = {owner_id} if owner_id else {"default_workspace", "legacy_dev_owner"}
 
         if results and results.get("documents") and len(results["documents"]) > 0:
             docs = results["documents"][0]
@@ -183,7 +186,7 @@ class VectorDBManager:
             results = self.collection.get(include=["documents", "metadatas", "embeddings"])
 
         if results and results.get("metadatas"):
-            allowed_owners = {owner_id} if owner_id else {"default_workspace", "legacy_dev_owner"}
+            allowed_owners = {owner_id, "default_workspace", "legacy_dev_owner"} if owner_id else {"default_workspace", "legacy_dev_owner"}
             docs, metas, ids, embs = [], [], [], []
             raw_embs = results.get("embeddings")
             for i, (doc, meta, cid) in enumerate(zip(results["documents"], results["metadatas"], results["ids"])):
