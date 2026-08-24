@@ -12,6 +12,7 @@ from app.core.vector_db import vector_db
 from app.services.document_parser import DocumentParser
 from app.services.rag_engine import rag_engine
 from app.services.document_registry import DocumentRegistryService
+from app.services.data_quality import DataQualityService
 
 from app.core.dependencies import get_optional_user
 from app.services.auth_service import AuthService
@@ -47,7 +48,14 @@ async def upload_document(file: UploadFile = File(...), current_user: dict | Non
     file_hash = calculate_file_hash(save_path)
 
     try:
-        owner_id = current_user["id"] if current_user else "default_workspace"
+        # Check existing active registry record to reuse if unchanged
+        existing_active = DocumentRegistryService.get_document_by_name(filename, status_filter="ACTIVE", owner_id=owner_id)
+        if existing_active and existing_active.get("file_hash") == file_hash and existing_active.get("total_chunks", 0) > 0:
+            logger.info(f"Reusing existing active document '{filename}' for owner '{owner_id}'.")
+            return {
+                "message": "Document already processed and indexed. Reusing existing active document record.",
+                "document": existing_active
+            }
 
         # Check existing registry record to preserve document_id on re-upload
         existing_doc = DocumentRegistryService.get_document_by_name(filename, status_filter=None, owner_id=owner_id)
@@ -78,6 +86,7 @@ async def upload_document(file: UploadFile = File(...), current_user: dict | Non
             owner_id=owner_id
         )
 
+        DataQualityService.invalidate_audit_cache()
         if current_user:
             AuthService.log_activity(current_user["id"], current_user["full_name"], current_user["email"], "PDF Uploaded", f"Uploaded document '{filename}'.")
 
@@ -181,6 +190,7 @@ async def soft_delete_document(document_id: str, current_user: dict | None = Dep
 
     # 3. Update registry state
     updated = DocumentRegistryService.soft_delete_document(doc_id, owner_id=owner_id)
+    DataQualityService.invalidate_audit_cache()
 
     if current_user:
         AuthService.log_activity(current_user["id"], current_user["full_name"], current_user["email"], "PDF Deleted", f"Soft deleted document '{filename}'.")
@@ -237,6 +247,7 @@ async def restore_document(document_id: str, current_user: dict | None = Depends
     # 3. Update registry status
     DocumentRegistryService.restore_document(doc_id, owner_id=owner_id)
     updated = DocumentRegistryService.update_document_chunks(doc_id, num_chunks)
+    DataQualityService.invalidate_audit_cache()
 
     if current_user:
         AuthService.log_activity(current_user["id"], current_user["full_name"], current_user["email"], "PDF Restored", f"Restored document '{filename}'.")
@@ -290,6 +301,7 @@ async def permanently_delete_document(document_id: str, current_user: dict | Non
 
     # 3. Permanently remove from registry JSON
     removed_record = DocumentRegistryService.permanently_delete_document(doc_id, owner_id=owner_id)
+    DataQualityService.invalidate_audit_cache()
 
     if current_user:
         AuthService.log_activity(current_user["id"], current_user["full_name"], current_user["email"], "PDF Permanently Deleted", f"Permanently deleted document '{filename}'.")

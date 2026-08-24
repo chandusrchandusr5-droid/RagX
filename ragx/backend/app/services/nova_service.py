@@ -37,6 +37,15 @@ class NovaAssistant:
             )
             category = "PLATFORM_OVERVIEW"
 
+        # Semantic Similarity vs Factual Claim Support
+        elif "semantic similarity" in text or "claim support" in text or "distinguish" in text:
+            reply = (
+                "RAGX explicitly distinguishes **Semantic Similarity** from **Factual Claim Support**:\n\n"
+                "• **Semantic Similarity (S_sim):** Measures dense vector embedding closeness (`all-MiniLM-L6-v2`) between query/claim and retrieved chunks.\n"
+                "• **Factual Claim Support (S_supp):** Requires proposition verification—extracting atomic claims via `ClaimExtractor` and verifying that assertion details and numeric figures are factually established by the source evidence, preventing false positives from topically similar but unsupported claims."
+            )
+            category = "CLAIM_SUPPORT_VERIFICATION"
+
         # 2. How is S_Ans / Reliability calculated?
         elif "reliability" in text or "s_ans" in text or "score" in text or "formula" in text:
             reply = (

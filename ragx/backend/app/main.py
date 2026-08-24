@@ -35,11 +35,8 @@ app.include_router(nova_router, prefix=settings.API_PREFIX)
 
 @app.on_event("startup")
 async def startup_event():
-    try:
-        from app.core.vector_db import get_shared_embedding_model
-        get_shared_embedding_model()
-    except Exception as e:
-        print(f"Startup model warmup warning: {e}")
+    # Fast non-blocking startup
+    pass
 
 
 

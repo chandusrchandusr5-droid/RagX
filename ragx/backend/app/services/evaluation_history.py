@@ -14,7 +14,15 @@ class EvaluationHistoryService:
             return []
         try:
             with open(history_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
+                content = f.read()
+                if not content.strip():
+                    return []
+                try:
+                    data = json.loads(content)
+                except Exception:
+                    # Fallback for concatenated or corrupted JSON files
+                    decoder = json.JSONDecoder()
+                    data, _ = decoder.raw_decode(content)
                 return data if isinstance(data, list) else []
         except Exception as e:
             logger.error(f"Failed to read evaluation history file '{history_file}': {e}")
@@ -24,8 +32,10 @@ class EvaluationHistoryService:
     def _save_history(cls, records: list[dict], history_file_path: Path = None):
         history_file = history_file_path or settings.EVAL_HISTORY_FILE
         try:
-            with open(history_file, "w", encoding="utf-8") as f:
+            temp_file = history_file.with_suffix(".tmp")
+            with open(temp_file, "w", encoding="utf-8") as f:
                 json.dump(records, f, indent=2)
+            temp_file.replace(history_file)
         except Exception as e:
             logger.error(f"Failed to save evaluation history file '{history_file}': {e}")
 
@@ -77,7 +87,8 @@ class EvaluationHistoryService:
     def get_history(cls, limit: int = 50, owner_id: str = None) -> list[dict]:
         records = cls._load_history()
         if owner_id:
-            records = [r for r in records if r.get("owner_id", "legacy_dev_owner") == owner_id]
+            allowed = {owner_id, "legacy_dev_owner", "default_workspace"}
+            records = [r for r in records if r.get("owner_id", "legacy_dev_owner") in allowed]
         # Sort by timestamp descending
         sorted_records = sorted(records, key=lambda x: x.get("timestamp", ""), reverse=True)
         return sorted_records[:limit]
@@ -86,7 +97,8 @@ class EvaluationHistoryService:
     def get_analytics_summary(cls, owner_id: str = None) -> dict:
         records = cls._load_history()
         if owner_id:
-            records = [r for r in records if r.get("owner_id", "legacy_dev_owner") == owner_id]
+            allowed = {owner_id, "legacy_dev_owner", "default_workspace"}
+            records = [r for r in records if r.get("owner_id", "legacy_dev_owner") in allowed]
 
         total_runs = len(records)
 

@@ -14,6 +14,7 @@ DEFAULT_STOPWORDS = {
 }
 
 _shared_embedding_model = None
+_TEXT_EMBEDDING_CACHE = {}
 
 def get_shared_embedding_model():
     global _shared_embedding_model
@@ -38,7 +39,13 @@ class VectorDBManager:
 
 
     def get_embedding(self, text: str) -> list[float]:
-        return self.embedding_model.encode(text).tolist()
+        if text in _TEXT_EMBEDDING_CACHE:
+            return _TEXT_EMBEDDING_CACHE[text]
+        emb = self.embedding_model.encode(text).tolist()
+        if len(_TEXT_EMBEDDING_CACHE) > 2000:
+            _TEXT_EMBEDDING_CACHE.clear()
+        _TEXT_EMBEDDING_CACHE[text] = emb
+        return emb
 
     def get_embeddings(self, texts: list[str]) -> list[list[float]]:
         return self.embedding_model.encode(texts).tolist()

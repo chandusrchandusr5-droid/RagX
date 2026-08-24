@@ -69,10 +69,10 @@ class FullKBRetrievalOracle:
     exists anywhere in the knowledge base when Top-K retrieval misses it.
     """
     @staticmethod
-    def search_oracle(query: str, similarity_threshold: float = 0.50) -> dict:
+    def search_oracle(query: str, similarity_threshold: float = 0.50, owner_id: str = None) -> dict:
 
         try:
-            all_chunks = vector_db.get_all_chunks()
+            all_chunks = vector_db.get_all_chunks(owner_id=owner_id)
             if not all_chunks or not all_chunks.get("documents"):
                 return {"found": False, "best_similarity": 0.0, "best_chunk": None}
 
@@ -83,8 +83,7 @@ class FullKBRetrievalOracle:
             if embeddings is None or len(embeddings) == 0:
                 return {"found": False, "best_similarity": 0.0, "best_chunk": None}
 
-            model = get_embedding_model()
-            q_emb = model.encode(query, convert_to_numpy=True)
+            q_emb = np.array(vector_db.get_embedding(query))
             q_norm = q_emb / (np.linalg.norm(q_emb) + 1e-9)
 
             emb_matrix = np.array(embeddings)
@@ -151,7 +150,7 @@ class EvidenceMatcher:
 
         # Query embedding for Question Relevance check
         if query:
-            q_emb = model.encode(query, convert_to_numpy=True)
+            q_emb = np.array(vector_db.get_embedding(query))
             q_norm = q_emb / (np.linalg.norm(q_emb) + 1e-9)
             q_rel_sims = np.dot(claim_norms, q_norm)
         else:
@@ -528,7 +527,7 @@ class AnswerEvaluator:
     handles division-by-zero safely, and outputs structured AnswerEvaluationReport.
     """
     @classmethod
-    def evaluate(cls, query: str, answer: str, retrieved_evidence: list[dict], history_file_path: Path = None) -> dict:
+    def evaluate(cls, query: str, answer: str, retrieved_evidence: list[dict], history_file_path: Path = None, owner_id: str = None) -> dict:
         timestamp = datetime.utcnow().isoformat() + "Z"
         eval_id = f"EVAL-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
 
@@ -543,12 +542,13 @@ class AnswerEvaluator:
         
         if not has_topk_evidence:
             # Execute Full-KB Oracle to check if evidence exists elsewhere in KB
-            oracle_res = FullKBRetrievalOracle.search_oracle(query, similarity_threshold=0.50)
+            oracle_res = FullKBRetrievalOracle.search_oracle(query, similarity_threshold=0.50, owner_id=owner_id)
             
             if oracle_res.get("found"):
                 # Evidence exists in full KB but was missed in Top-K -> RETRIEVAL_FAILURE
                 rep = {
                     "evaluation_id": eval_id,
+                    "owner_id": owner_id or "legacy_dev_owner",
                     "timestamp": timestamp,
                     "query": query,
                     "generated_answer": answer,
@@ -717,6 +717,7 @@ class AnswerEvaluator:
 
         report = {
             "evaluation_id": eval_id,
+            "owner_id": owner_id or "legacy_dev_owner",
             "timestamp": timestamp,
             "query": query,
             "generated_answer": answer,

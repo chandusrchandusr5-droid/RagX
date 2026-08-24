@@ -3,8 +3,6 @@ from pydantic import BaseModel
 from typing import Optional
 from app.services.auth_service import AuthService
 from app.core.dependencies import get_current_user
-from app.services.document_registry import DocumentRegistryService
-from app.core.vector_db import vector_db
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -104,6 +102,9 @@ async def change_password(request: ChangePasswordRequest, current_user: dict = D
 async def delete_account(current_user: dict = Depends(get_current_user)):
     user_id = current_user["id"]
     try:
+        from app.services.document_registry import DocumentRegistryService
+        from app.core.vector_db import vector_db
+
         # Purge user's documents and vector chunks safely
         user_docs = DocumentRegistryService.get_all_documents(owner_id=user_id)
         for doc in user_docs:

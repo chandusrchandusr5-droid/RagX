@@ -8,7 +8,14 @@ from app.services.document_parser import DocumentParser
 
 logger = logging.getLogger("ragx.data_quality")
 
+_QUALITY_AUDIT_CACHE = {}
+
 class DataQualityService:
+    @classmethod
+    def invalidate_audit_cache(cls):
+        global _QUALITY_AUDIT_CACHE
+        _QUALITY_AUDIT_CACHE.clear()
+
     @staticmethod
     def calculate_file_md5(file_path: Path) -> str:
         hasher = hashlib.md5()
@@ -44,6 +51,13 @@ class DataQualityService:
             uploaded_files = [f for f in upload_dir.iterdir() if f.is_file() and f.name in user_doc_names] if upload_dir.exists() else []
         else:
             uploaded_files = [f for f in upload_dir.iterdir() if f.is_file() and f.suffix.lower() in ['.pdf', '.txt', '.md']] if upload_dir.exists() else []
+
+        cache_key = (
+            owner_id or "global",
+            tuple(sorted([(f.name, f.stat().st_mtime) for f in uploaded_files]))
+        )
+        if cache_key in _QUALITY_AUDIT_CACHE:
+            return _QUALITY_AUDIT_CACHE[cache_key]
 
         # Raw Measurements Tracker
         raw_measurements = {
@@ -355,7 +369,7 @@ class DataQualityService:
         else:
             user_status = "NEEDS_ATTENTION"
 
-        return {
+        res_report = {
             "composite_reliability_score": composite_score,
             "user_facing_status": user_status,
             "display_status": user_status,
@@ -381,5 +395,7 @@ class DataQualityService:
             },
             "issues": issues
         }
+        _QUALITY_AUDIT_CACHE[cache_key] = res_report
+        return res_report
 
 data_quality_service = DataQualityService()

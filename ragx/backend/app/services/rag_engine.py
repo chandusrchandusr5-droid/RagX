@@ -11,6 +11,24 @@ from app.core.vector_db import vector_db
 logger = logging.getLogger("ragx.rag_engine")
 
 
+_OLLAMA_CHECKED = False
+_OLLAMA_AVAILABLE = False
+
+def _check_ollama_status() -> bool:
+    global _OLLAMA_CHECKED, _OLLAMA_AVAILABLE
+    if _OLLAMA_CHECKED:
+        return _OLLAMA_AVAILABLE
+    _OLLAMA_CHECKED = True
+    if not settings.USE_OLLAMA:
+        _OLLAMA_AVAILABLE = False
+        return False
+    try:
+        res = requests.get(f"{settings.OLLAMA_BASE_URL}/api/tags", timeout=0.15)
+        _OLLAMA_AVAILABLE = (res.status_code == 200)
+    except Exception:
+        _OLLAMA_AVAILABLE = False
+    return _OLLAMA_AVAILABLE
+
 class RAGEngine:
     @staticmethod
     def chunk_pages(file_name: str, pages: list[dict]) -> list[dict]:
@@ -98,8 +116,8 @@ Question: {question}
 
 Answer clearly, concisely, and specifically based strictly on the context above:"""
 
-        # Try local Ollama endpoint first if enabled
-        if settings.USE_OLLAMA:
+        # Try local Ollama endpoint first if active and responsive
+        if _check_ollama_status():
             try:
                 response = requests.post(
                     f"{settings.OLLAMA_BASE_URL}/api/generate",
@@ -108,7 +126,7 @@ Answer clearly, concisely, and specifically based strictly on the context above:
                         "prompt": prompt,
                         "stream": False
                     },
-                    timeout=10
+                    timeout=5
                 )
                 if response.status_code == 200:
                     res_json = response.json()
@@ -116,7 +134,7 @@ Answer clearly, concisely, and specifically based strictly on the context above:
                     if res_text:
                         return res_text
             except Exception as e:
-                logger.warning(f"Ollama local service call failed or timed out ({e}). Falling back to query-aware internal context synthesizer.")
+                logger.warning(f"Ollama local service call failed ({e}). Falling back to query-aware internal context synthesizer.")
 
         # Fallback Query-Aware Context Synthesis Engine
         if not context_chunks:

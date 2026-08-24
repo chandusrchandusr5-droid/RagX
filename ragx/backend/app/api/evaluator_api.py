@@ -24,7 +24,7 @@ async def evaluate_rag_answer(request: EvaluationRequest, current_user: dict | N
     if not request.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
 
-    owner_id = current_user["id"] if current_user else None
+    owner_id = current_user["id"] if current_user else "legacy_dev_owner"
 
     try:
         evidence = request.retrieved_evidence
@@ -37,8 +37,10 @@ async def evaluate_rag_answer(request: EvaluationRequest, current_user: dict | N
         report = service.evaluate(
             query=request.query,
             answer=request.answer,
-            retrieved_evidence=evidence or []
+            retrieved_evidence=evidence or [],
+            owner_id=owner_id
         )
+        EvaluationHistoryService.log_evaluation_run(report, owner_id=owner_id)
         return report
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Answer evaluation failed: {str(e)}")
@@ -48,7 +50,7 @@ async def query_and_evaluate_rag(request: QueryAndEvaluateRequest, current_user:
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
-    owner_id = current_user["id"] if current_user else None
+    owner_id = current_user["id"] if current_user else "legacy_dev_owner"
 
     try:
         # Step 1: Execute RAG Pipeline Query
@@ -59,7 +61,8 @@ async def query_and_evaluate_rag(request: QueryAndEvaluateRequest, current_user:
         eval_report = service.evaluate(
             query=request.question,
             answer=rag_result.get("answer", ""),
-            retrieved_evidence=rag_result.get("retrieved_evidence", [])
+            retrieved_evidence=rag_result.get("retrieved_evidence", []),
+            owner_id=owner_id
         )
 
         # Save to history with owner_id

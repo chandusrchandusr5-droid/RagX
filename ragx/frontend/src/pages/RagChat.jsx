@@ -5,9 +5,18 @@ import { queryAndEvaluateRag } from '../services/api';
 export default function RagChat() {
   const [question, setQuestion] = useState('');
   const [loading, setLoading] = useState(false);
+  const getUserKey = () => {
+    try {
+      const u = JSON.parse(localStorage.getItem('ragx_user') || '{}');
+      return u?.id ? `ragx_chat_history_${u.id}` : 'ragx_chat_history_guest';
+    } catch (e) {
+      return 'ragx_chat_history_guest';
+    }
+  };
+
   const [chatHistory, setChatHistory] = useState(() => {
     try {
-      const saved = localStorage.getItem('ragx_chat_history');
+      const saved = localStorage.getItem(getUserKey());
       return saved ? JSON.parse(saved) : [];
     } catch (e) { return []; }
   });
@@ -36,7 +45,7 @@ export default function RagChat() {
       };
       setChatHistory((prev) => {
         const updated = [newEntry, ...prev];
-        try { localStorage.setItem('ragx_chat_history', JSON.stringify(updated)); } catch (e) {}
+        try { localStorage.setItem(getUserKey(), JSON.stringify(updated)); } catch (e) {}
         return updated;
       });
     } catch (err) {

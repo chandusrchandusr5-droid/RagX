@@ -24,6 +24,16 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState('documents');
   const [showSettings, setShowSettings] = useState(false);
+  const [visitedTabs, setVisitedTabs] = useState(() => new Set([activeTab]));
+
+  useEffect(() => {
+    setVisitedTabs((prev) => {
+      if (prev.has(activeTab)) return prev;
+      const next = new Set(prev);
+      next.add(activeTab);
+      return next;
+    });
+  }, [activeTab]);
 
   // Validate session token on mount if user is saved
   useEffect(() => {
@@ -88,22 +98,32 @@ export default function App() {
       />
       
       <main className="flex-1">
-        <div className={activeTab === 'documents' ? 'block' : 'hidden'}>
-          <Documents />
-        </div>
-        <div className={activeTab === 'data-quality' ? 'block' : 'hidden'}>
-          <DataQuality onNavigateToDocs={() => setActiveTab('documents')} />
-        </div>
-        <div className={activeTab === 'rag-chat' ? 'block' : 'hidden'}>
-          <RagChat />
-        </div>
-        <div className={activeTab === 'evaluator' ? 'block' : 'hidden'}>
-          <AnswerEvaluator />
-        </div>
-        <div className={activeTab === 'analytics' ? 'block' : 'hidden'}>
-          <Analytics />
-        </div>
-        {user?.role === 'ADMIN' && (
+        {visitedTabs.has('documents') && (
+          <div className={activeTab === 'documents' ? 'block' : 'hidden'}>
+            <Documents />
+          </div>
+        )}
+        {visitedTabs.has('data-quality') && (
+          <div className={activeTab === 'data-quality' ? 'block' : 'hidden'}>
+            <DataQuality onNavigateToDocs={() => setActiveTab('documents')} />
+          </div>
+        )}
+        {visitedTabs.has('rag-chat') && (
+          <div className={activeTab === 'rag-chat' ? 'block' : 'hidden'}>
+            <RagChat />
+          </div>
+        )}
+        {visitedTabs.has('evaluator') && (
+          <div className={activeTab === 'evaluator' ? 'block' : 'hidden'}>
+            <AnswerEvaluator />
+          </div>
+        )}
+        {visitedTabs.has('analytics') && (
+          <div className={activeTab === 'analytics' ? 'block' : 'hidden'}>
+            <Analytics />
+          </div>
+        )}
+        {user?.role === 'ADMIN' && visitedTabs.has('admin') && (
           <div className={activeTab === 'admin' ? 'block' : 'hidden'}>
             <AdminPortal />
           </div>
