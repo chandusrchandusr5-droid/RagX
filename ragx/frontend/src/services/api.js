@@ -127,8 +127,9 @@ export const queryRag = async (question, topK = 3) => {
   return response.data;
 };
 
-export const fetchQualityAudit = async () => {
-  const response = await apiClient.get('/quality/audit');
+export const fetchQualityAudit = async (documentId = null) => {
+  const params = documentId && documentId !== 'all' ? { document_id: documentId } : {};
+  const response = await apiClient.get('/quality/audit', { params });
   return response.data;
 };
 

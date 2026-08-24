@@ -11,19 +11,21 @@ import {
   Sliders,
   Database
 } from 'lucide-react';
-import { fetchQualityAudit } from '../services/api';
+import { fetchQualityAudit, fetchDocuments } from '../services/api';
 
 export default function DataQuality({ onNavigateToDocs }) {
   const [auditReport, setAuditReport] = useState(null);
+  const [documents, setDocuments] = useState([]);
+  const [selectedDocId, setSelectedDocId] = useState('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [filterCategory, setFilterCategory] = useState('ALL'); // ALL, CONFIRMED, SUSPECTED
 
-  const loadAuditReport = async () => {
+  const loadAuditReport = async (docId = selectedDocId) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchQualityAudit();
+      const data = await fetchQualityAudit(docId);
       setAuditReport(data);
     } catch (err) {
       console.error(err);
@@ -34,8 +36,20 @@ export default function DataQuality({ onNavigateToDocs }) {
   };
 
   useEffect(() => {
-    loadAuditReport();
+    fetchDocuments('ACTIVE')
+      .then((data) => setDocuments(data.documents || []))
+      .catch((err) => console.error('Failed to fetch document list for quality selector:', err));
   }, []);
+
+  useEffect(() => {
+    loadAuditReport(selectedDocId);
+  }, []);
+
+  const handleDocSelect = (e) => {
+    const docId = e.target.value;
+    setSelectedDocId(docId);
+    loadAuditReport(docId);
+  };
 
   if (loading) {
     return (
@@ -93,13 +107,31 @@ export default function DataQuality({ onNavigateToDocs }) {
             Automated analysis of document extractions, file redundancies, vector chunk overlaps, and candidate topic conflicts.
           </p>
         </div>
-        <button
-          onClick={loadAuditReport}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 transition"
-        >
-          <RefreshCw className="w-3.5 h-3.5" />
-          Re-Run Audit
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 bg-slate-900/90 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-slate-300 shadow-md">
+            <FileText className="w-4 h-4 text-indigo-400" />
+            <span className="font-semibold text-slate-400">Select Document:</span>
+            <select
+              value={selectedDocId}
+              onChange={handleDocSelect}
+              className="bg-slate-800 text-white font-medium rounded-lg px-2.5 py-1 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs cursor-pointer"
+            >
+              <option value="all">All Documents (Combined Audit)</option>
+              {documents.map((doc) => (
+                <option key={doc.document_id} value={doc.document_id}>
+                  {doc.document_name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            onClick={() => loadAuditReport(selectedDocId)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 transition"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Re-Run Audit
+          </button>
+        </div>
       </div>
 
       {/* NO DATA STATE */}

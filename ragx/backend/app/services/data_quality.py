@@ -39,21 +39,32 @@ class DataQualityService:
         return any(kw in text_lower for kw in structural_keywords) or len(text.strip().splitlines()) <= 4
 
     @classmethod
-    def audit_knowledge_base(cls, registry_file_path: Path = None, uploads_dir_path: Path = None, owner_id: str = None) -> dict:
+    def audit_knowledge_base(cls, registry_file_path: Path = None, uploads_dir_path: Path = None, owner_id: str = None, document_id: str = None) -> dict:
         from app.services.document_registry import DocumentRegistryService
 
         upload_dir = uploads_dir_path or settings.UPLOAD_DIR
         
-        # Filter files by owner_id if owner_id is specified
+        target_doc = None
+        if document_id and str(document_id).strip() and str(document_id).lower() != "all":
+            target_doc = DocumentRegistryService.get_document_by_id(document_id, owner_id=owner_id)
+            if not target_doc:
+                target_doc = DocumentRegistryService.get_document_by_name(document_id, owner_id=owner_id)
+
+        # Filter files by owner_id and optional target document
         if owner_id:
-            user_docs = DocumentRegistryService.get_all_documents(owner_id=owner_id)
-            user_doc_names = set(d.get("document_name", "") for d in user_docs if d.get("status") == "ACTIVE")
+            user_docs = DocumentRegistryService.get_all_documents(owner_id=owner_id, status_filter="ACTIVE")
+            user_doc_names = set(d.get("document_name", "") for d in user_docs)
+            if target_doc:
+                user_doc_names = {target_doc["document_name"]}
             uploaded_files = [f for f in upload_dir.iterdir() if f.is_file() and f.name in user_doc_names] if upload_dir.exists() else []
+        elif target_doc:
+            uploaded_files = [f for f in upload_dir.iterdir() if f.is_file() and f.name == target_doc["document_name"]] if upload_dir.exists() else []
         else:
             uploaded_files = [f for f in upload_dir.iterdir() if f.is_file() and f.suffix.lower() in ['.pdf', '.txt', '.md']] if upload_dir.exists() else []
 
         cache_key = (
             owner_id or "global",
+            document_id or "all",
             tuple(sorted([(f.name, f.stat().st_mtime) for f in uploaded_files]))
         )
         if cache_key in _QUALITY_AUDIT_CACHE:
@@ -204,9 +215,22 @@ class DataQualityService:
         try:
             all_chunks_data = vector_db.get_all_chunks(owner_id=owner_id)
             if all_chunks_data and all_chunks_data.get("documents"):
-                documents = all_chunks_data["documents"]
-                metadatas = all_chunks_data["metadatas"]
-                embeddings = all_chunks_data.get("embeddings")
+                raw_docs = all_chunks_data["documents"]
+                raw_metas = all_chunks_data["metadatas"]
+                raw_embs = all_chunks_data.get("embeddings")
+
+                if target_doc:
+                    t_id = target_doc["document_id"]
+                    t_name = target_doc["document_name"]
+                    indices = [i for i, m in enumerate(raw_metas) if m.get("document_id") == t_id or m.get("document_name") == t_name]
+                    documents = [raw_docs[i] for i in indices]
+                    metadatas = [raw_metas[i] for i in indices]
+                    embeddings = [raw_embs[i] for i in indices] if raw_embs is not None else None
+                else:
+                    documents = raw_docs
+                    metadatas = raw_metas
+                    embeddings = raw_embs
+
                 raw_measurements["total_chunks"] = len(documents)
 
                 if embeddings is not None and len(embeddings) > 1:
@@ -371,6 +395,8 @@ class DataQualityService:
 
         res_report = {
             "composite_reliability_score": composite_score,
+            "audited_document_id": target_doc.get("document_id") if target_doc else "all",
+            "audited_document_name": target_doc.get("document_name") if target_doc else "All Documents",
             "user_facing_status": user_status,
             "display_status": user_status,
             "scoring_breakdown": {
