@@ -316,40 +316,44 @@ class DataQualityService:
                             })
 
 
-            # Compare pairs of snippets across documents targeting the same topic
-            for i in range(len(all_snippets)):
-                for j in range(i + 1, len(all_snippets)):
-                    s1 = all_snippets[i]
-                    s2 = all_snippets[j]
+            # Group snippets that contain numerical figures by topic
+            topic_snippets = {}
+            for snip in all_snippets:
+                snip_lower = snip["text"].lower()
+                nums = num_pattern.findall(snip_lower)
+                if nums:
+                    for topic in entity_topics:
+                        if topic in snip_lower:
+                            if topic not in topic_snippets:
+                                topic_snippets[topic] = []
+                            topic_snippets[topic].append((snip, nums))
 
-                    if s1["doc_name"] != s2["doc_name"]:
-                        for topic in entity_topics:
-                            if topic in s1["text"].lower() and topic in s2["text"].lower():
-                                num1 = num_pattern.findall(s1["text"].lower())
-                                num2 = num_pattern.findall(s2["text"].lower())
-
-                                if num1 and num2 and set(num1) != set(num2):
-                                    topic_conflicts_detected.add(topic)
-                                    issues.append({
-                                        "issue_id": f"QUAL-{issue_counter:03d}",
-                                        "issue_type": "SUSPECTED_CONFLICT_SIGNAL",
-                                        "category": "CONSISTENCY",
-                                        "issue_status": "SUSPECTED_SIGNAL",
-                                        "confidence": 0.75,
-                                        "severity": "WARNING",
-                                        "title": f"Suspected Numerical Disparity in Topic '{topic.capitalize()}'",
-                                        "source_file": s1["doc_name"],
-                                        "page_number": s1["page_number"],
-                                        "chunk_id": "N/A",
-                                        "related_file": s2["doc_name"],
-                                        "evidence_snippet": s1["text"],
-                                        "related_snippet": s2["text"],
-                                        "potential_rag_impact": f"Document '{s1['doc_name']}' mentions '{', '.join(num1)}' while '{s2['doc_name']}' mentions '{', '.join(num2)}'. If both are retrieved, LLM receives conflicting context.",
-                                        "remediation": f"Verify if {s2['doc_name']} is an updated policy or applies to a different student category.",
-                                        "demonstrated_impact": None
-                                    })
-                                    issue_counter += 1
-                                    break
+            for topic, snip_list in topic_snippets.items():
+                for i in range(len(snip_list)):
+                    for j in range(i + 1, len(snip_list)):
+                        s1, num1 = snip_list[i]
+                        s2, num2 = snip_list[j]
+                        if s1["doc_name"] != s2["doc_name"] and set(num1) != set(num2):
+                            topic_conflicts_detected.add(topic)
+                            issues.append({
+                                "issue_id": f"QUAL-{issue_counter:03d}",
+                                "issue_type": "SUSPECTED_CONFLICT_SIGNAL",
+                                "category": "CONSISTENCY",
+                                "issue_status": "SUSPECTED_SIGNAL",
+                                "confidence": 0.75,
+                                "severity": "WARNING",
+                                "title": f"Suspected Numerical Disparity in Topic '{topic.capitalize()}'",
+                                "source_file": s1["doc_name"],
+                                "page_number": s1["page_number"],
+                                "chunk_id": "N/A",
+                                "related_file": s2["doc_name"],
+                                "evidence_snippet": s1["text"],
+                                "related_snippet": s2["text"],
+                                "potential_rag_impact": f"Document '{s1['doc_name']}' mentions '{', '.join(num1)}' while '{s2['doc_name']}' mentions '{', '.join(num2)}'. If both are retrieved, LLM receives conflicting context.",
+                                "remediation": f"Verify if {s2['doc_name']} is an updated policy or applies to a different student category.",
+                                "demonstrated_impact": None
+                            })
+                            issue_counter += 1
 
 
 

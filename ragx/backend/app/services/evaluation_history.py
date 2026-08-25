@@ -8,6 +8,7 @@ logger = logging.getLogger("ragx.evaluation_history")
 
 _HISTORY_CACHE = None
 _HISTORY_MTIME = 0.0
+_ANALYTICS_CACHE = {}
 
 class EvaluationHistoryService:
     @classmethod
@@ -39,6 +40,8 @@ class EvaluationHistoryService:
 
     @classmethod
     def _save_history(cls, records: list[dict], history_file_path: Path = None):
+        global _ANALYTICS_CACHE
+        _ANALYTICS_CACHE.clear()
         history_file = history_file_path or settings.EVAL_HISTORY_FILE
         try:
             temp_file = history_file.with_suffix(".tmp")
@@ -104,15 +107,20 @@ class EvaluationHistoryService:
 
     @classmethod
     def get_analytics_summary(cls, owner_id: str = None) -> dict:
+        global _ANALYTICS_CACHE
         records = cls._load_history()
         if owner_id:
             allowed = {owner_id, "legacy_dev_owner", "default_workspace", None}
             records = [r for r in records if r.get("owner_id", "legacy_dev_owner") in allowed]
 
+        cache_key = (owner_id or "all", _HISTORY_MTIME, len(records))
+        if cache_key in _ANALYTICS_CACHE:
+            return _ANALYTICS_CACHE[cache_key]
+
         total_runs = len(records)
 
         if total_runs == 0:
-            return {
+            res = {
                 "total_evaluations": 0,
                 "average_reliability_score": 0.0,
                 "reliability_status_distribution": {
@@ -136,6 +144,8 @@ class EvaluationHistoryService:
                 },
                 "recent_evaluations": []
             }
+            _ANALYTICS_CACHE[cache_key] = res
+            return res
 
         scores = [r.get("overall_reliability_score", 0.0) for r in records if r.get("evaluation_status") == "EVALUATED"]
         avg_score = round(sum(scores) / len(scores), 1) if scores else 0.0
@@ -193,7 +203,7 @@ class EvaluationHistoryService:
 
         sorted_recent = sorted(records, key=lambda x: x.get("timestamp", ""), reverse=True)[:10]
 
-        return {
+        summary = {
             "total_evaluations": total_runs,
             "average_reliability_score": avg_score,
             "reliability_status_distribution": rel_dist,
@@ -202,3 +212,5 @@ class EvaluationHistoryService:
             "score_distribution_buckets": buckets,
             "recent_evaluations": sorted_recent
         }
+        _ANALYTICS_CACHE[cache_key] = summary
+        return summary
