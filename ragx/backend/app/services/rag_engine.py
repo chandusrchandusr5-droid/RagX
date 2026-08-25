@@ -319,8 +319,8 @@ Answer clearly, concisely, and specifically based strictly on the context above:
 
                 rec_tokens = set(w.lower() for w in re.findall(r'\w+', rec_text))
                 non_stop_rec = [w for w in rec_tokens if w not in ENGLISH_STOPWORDS]
-                if not non_stop_rec or len(non_stop_rec) < 3:
-                    # Skip non-explanatory fragments
+                if not non_stop_rec:
+                    # Skip empty fragments
                     continue
 
                 matching_tokens = [t for t in q_tokens if tokens_match(t, rec_tokens)]
@@ -344,6 +344,9 @@ Answer clearly, concisely, and specifically based strictly on the context above:
         valid_candidates = [e for e in candidate_entries if not is_heading_or_question_repeat(e["text"]) and not is_non_explanatory_header_or_title(e["text"])]
 
         if not valid_candidates:
+            if context_chunks:
+                best_c = context_chunks[0]
+                return f"Based on the retrieved document [{best_c['document_name']}, Page {best_c['page_number']}]: {best_c['text']}"
             return "The requested information could not be found in the provided document context."
 
         # Sort candidates by generic score descending
