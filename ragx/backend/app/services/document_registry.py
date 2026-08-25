@@ -36,10 +36,7 @@ class DocumentRegistryService:
     def get_all_documents(cls, status_filter: str = None, owner_id: str = None) -> list[dict]:
         records = cls._load_registry()
         filtered = []
-        if owner_id and owner_id not in ("default_workspace", "legacy_dev_owner"):
-            allowed_owners = {owner_id}
-        else:
-            allowed_owners = {"default_workspace", "legacy_dev_owner"}
+        allowed_owners = {owner_id, "default_workspace", "legacy_dev_owner", None} if owner_id else {"default_workspace", "legacy_dev_owner", None}
 
         for r in records:
             r_owner = r.get("owner_id", "default_workspace")
@@ -53,10 +50,7 @@ class DocumentRegistryService:
     @classmethod
     def get_document_by_id(cls, document_id: str, owner_id: str = None) -> dict | None:
         records = cls._load_registry()
-        if owner_id and owner_id not in ("default_workspace", "legacy_dev_owner"):
-            allowed_owners = {owner_id}
-        else:
-            allowed_owners = {"default_workspace", "legacy_dev_owner"}
+        allowed_owners = {owner_id, "default_workspace", "legacy_dev_owner", None} if owner_id else {"default_workspace", "legacy_dev_owner", None}
 
         for r in records:
             if r.get("document_id") == document_id:
@@ -68,10 +62,7 @@ class DocumentRegistryService:
     @classmethod
     def get_document_by_name(cls, document_name: str, status_filter: str = "ACTIVE", owner_id: str = None) -> dict | None:
         records = cls._load_registry()
-        if owner_id and owner_id not in ("default_workspace", "legacy_dev_owner"):
-            allowed_owners = {owner_id}
-        else:
-            allowed_owners = {"default_workspace", "legacy_dev_owner"}
+        allowed_owners = {owner_id, "default_workspace", "legacy_dev_owner", None} if owner_id else {"default_workspace", "legacy_dev_owner", None}
 
         for r in records:
             if r.get("document_name") == document_name:

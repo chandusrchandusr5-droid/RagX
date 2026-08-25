@@ -87,7 +87,7 @@ class EvaluationHistoryService:
     def get_history(cls, limit: int = 50, owner_id: str = None) -> list[dict]:
         records = cls._load_history()
         if owner_id:
-            allowed = {owner_id} if owner_id not in ("default_workspace", "legacy_dev_owner") else {"default_workspace", "legacy_dev_owner"}
+            allowed = {owner_id, "legacy_dev_owner", "default_workspace", None}
             records = [r for r in records if r.get("owner_id", "legacy_dev_owner") in allowed]
         # Sort by timestamp descending
         sorted_records = sorted(records, key=lambda x: x.get("timestamp", ""), reverse=True)
@@ -97,7 +97,7 @@ class EvaluationHistoryService:
     def get_analytics_summary(cls, owner_id: str = None) -> dict:
         records = cls._load_history()
         if owner_id:
-            allowed = {owner_id} if owner_id not in ("default_workspace", "legacy_dev_owner") else {"default_workspace", "legacy_dev_owner"}
+            allowed = {owner_id, "legacy_dev_owner", "default_workspace", None}
             records = [r for r in records if r.get("owner_id", "legacy_dev_owner") in allowed]
 
         total_runs = len(records)

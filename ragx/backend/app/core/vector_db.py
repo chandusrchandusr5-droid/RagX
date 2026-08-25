@@ -110,8 +110,10 @@ class VectorDBManager:
             if doc_tokens:
                 doc_match_count = sum(1 for t in doc_tokens if t in q_tokens)
                 doc_ratio = doc_match_count / len(doc_tokens)
-                if doc_ratio >= 0.50:
-                    lexical_ratio = max(lexical_ratio, 0.85)
+                if doc_ratio >= 0.80:
+                    lexical_ratio = max(lexical_ratio, 0.95)
+                elif doc_ratio >= 0.50:
+                    lexical_ratio = max(lexical_ratio, 0.70)
 
         # Smooth continuous hybrid score that boosts vector similarity without penalizing strong vector matches
         hybrid_sim = round(max(vector_similarity, 0.50 * vector_similarity + 0.50 * lexical_ratio), 4)
@@ -122,10 +124,7 @@ class VectorDBManager:
         if top_k is None:
             top_k = settings.TOP_K_RETRIEVAL
 
-        if owner_id and owner_id not in ("default_workspace", "legacy_dev_owner"):
-            allowed_owners = {owner_id}
-        else:
-            allowed_owners = {"default_workspace", "legacy_dev_owner"}
+        allowed_owners = {owner_id, "default_workspace", "legacy_dev_owner"} if owner_id else {"default_workspace", "legacy_dev_owner"}
 
         # 1. Vector Search Query with owner_id filter
         query_embedding = self.get_embedding(query_text)
@@ -219,10 +218,7 @@ class VectorDBManager:
             results = self.collection.get(include=["documents", "metadatas"])
 
         if results and results.get("metadatas"):
-            if owner_id and owner_id not in ("default_workspace", "legacy_dev_owner"):
-                allowed_owners = {owner_id}
-            else:
-                allowed_owners = {"default_workspace", "legacy_dev_owner"}
+            allowed_owners = {owner_id, "default_workspace", "legacy_dev_owner", None} if owner_id else {"default_workspace", "legacy_dev_owner", None}
             docs, metas, ids, embs = [], [], [], []
             raw_embs = results.get("embeddings")
             for i, (doc, meta, cid) in enumerate(zip(results["documents"], results["metadatas"], results["ids"])):
