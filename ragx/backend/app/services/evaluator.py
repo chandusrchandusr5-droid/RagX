@@ -72,7 +72,7 @@ class FullKBRetrievalOracle:
     def search_oracle(query: str, similarity_threshold: float = 0.50, owner_id: str = None) -> dict:
 
         try:
-            all_chunks = vector_db.get_all_chunks(owner_id=owner_id)
+            all_chunks = vector_db.get_all_chunks(owner_id=owner_id, include_embeddings=True)
             if not all_chunks or not all_chunks.get("documents"):
                 return {"found": False, "best_similarity": 0.0, "best_chunk": None}
 
@@ -234,7 +234,7 @@ class EvidenceMatcher:
             elif missing_entity_tokens and not is_substring_match:
                 support_status = "UNSUPPORTED"
                 disparity_detail = f"Evidence mentions related subject matter, but lacks asserted entity/concept '{missing_entity_tokens[0]}'."
-            elif is_substring_match or (best_sim >= 0.60 and term_coverage_ratio >= 0.50) or (best_sim >= 0.75 and term_coverage_ratio >= 0.40):
+            elif is_substring_match or (best_sim >= 0.55 and term_coverage_ratio >= 0.35) or (best_sim >= 0.60 and term_coverage_ratio >= 0.30) or (best_sim >= 0.75 and term_coverage_ratio >= 0.30):
                 support_status = "SUPPORTED"
                 disparity_detail = "Claim proposition is factually established by retrieved evidence snippet."
             elif best_sim >= 0.60 and term_coverage_ratio < 0.50:
@@ -272,7 +272,7 @@ class EvidenceMatcher:
                 if is_bare_entity_claim and q_predicate_tokens:
                     relevance_classification = "SUPPORTED_IRRELEVANT"
                     disparity_detail += " Note: Claim contains only entity identifiers but fails to answer the question predicate (Entity-Only Fragment)."
-                elif q_rel_score >= 0.65 or (has_q_token_overlap and q_rel_score >= 0.35) or (bool(standalone_claim_nums) and bool(q_predicate_tokens) and support_status == "SUPPORTED"):
+                elif (q_rel_score >= 0.65 and len(query.strip()) > 3) or (has_q_token_overlap and q_rel_score >= 0.35 and len(query.strip()) > 3) or (bool(standalone_claim_nums) and bool(q_predicate_tokens) and support_status == "SUPPORTED"):
                     relevance_classification = "SUPPORTED_RELEVANT"
                 else:
                     relevance_classification = "SUPPORTED_IRRELEVANT"
@@ -644,8 +644,11 @@ class AnswerEvaluator:
         # -------------------------------------------------------------
         phase2_refs, has_confirmed_conf, has_suspected_conf = Phase2CrossReferencer.cross_reference_issues(retrieved_evidence)
 
-        # Execute Full-KB Oracle check for completeness diagnostic
-        oracle_res = FullKBRetrievalOracle.search_oracle(query, similarity_threshold=0.50)
+        # Execute Full-KB Oracle check for completeness diagnostic ONLY when top-k evidence is missing or low-confidence
+        if not has_topk_evidence or avg_retrieval_sim < 0.35:
+            oracle_res = FullKBRetrievalOracle.search_oracle(query, similarity_threshold=0.50, owner_id=owner_id)
+        else:
+            oracle_res = {"found": False, "best_similarity": avg_retrieval_sim, "best_chunk": None}
 
 
         # -------------------------------------------------------------

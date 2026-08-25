@@ -62,22 +62,38 @@ class VectorDBManager:
         )
 
     @staticmethod
-    def _compute_hybrid_score(query_text: str, chunk_text: str, vector_similarity: float) -> float:
+    def _compute_hybrid_score(query_text: str, chunk_text: str, vector_similarity: float, document_name: str = "") -> float:
         """
-        Computes case-insensitive continuous hybrid similarity combining vector cosine similarity
-        and case-normalized lexical entity overlap.
+        Computes case-insensitive continuous hybrid similarity combining vector cosine similarity,
+        exact token/entity overlap, and document title matching.
         Guarantees that strong vector matches are never penalized by query length variations.
         """
         q_tokens = [
             w.lower() for w in re.findall(r'\w+', query_text)
-            if w.lower() not in DEFAULT_STOPWORDS and len(w) > 1
+            if w.lower() not in DEFAULT_STOPWORDS
         ]
         
         if not q_tokens:
             return vector_similarity
 
         c_tokens_set = set(w.lower() for w in re.findall(r'\w+', chunk_text))
-        matched = [t for t in q_tokens if t in c_tokens_set]
+        c_text_lower = chunk_text.lower()
+        
+        ACRONYM_MAP = {
+            "usn": ["university seat number", "seat number", "usn"],
+            "vtu": ["visvesvaraya technological university", "vtu"],
+            "cgpa": ["cumulative grade point average", "cgpa"],
+            "sgpa": ["semester grade point average", "sgpa"],
+            "gpa": ["grade point average", "gpa"]
+        }
+
+        matched = []
+        for t in q_tokens:
+            if t in c_tokens_set:
+                matched.append(t)
+            elif t in ACRONYM_MAP and any(exp in c_text_lower for exp in ACRONYM_MAP[t]):
+                matched.append(t)
+
         lexical_ratio = len(matched) / len(q_tokens) if q_tokens else 0.0
 
         # Exact contiguous phrase match check (case-insensitive)
@@ -87,8 +103,18 @@ class VectorDBManager:
         if has_phrase_match:
             lexical_ratio = max(lexical_ratio, 0.95)
 
+        # Check if query specifically mentions terms in document_name
+        if document_name:
+            doc_name_clean = re.sub(r'[^a-zA-Z0-9]', ' ', document_name).lower()
+            doc_tokens = [w for w in doc_name_clean.split() if w not in DEFAULT_STOPWORDS and len(w) > 1]
+            if doc_tokens:
+                doc_match_count = sum(1 for t in doc_tokens if t in q_tokens)
+                doc_ratio = doc_match_count / len(doc_tokens)
+                if doc_ratio >= 0.50:
+                    lexical_ratio = max(lexical_ratio, 0.85)
+
         # Smooth continuous hybrid score that boosts vector similarity without penalizing strong vector matches
-        hybrid_sim = round(max(vector_similarity, 0.60 * vector_similarity + 0.40 * lexical_ratio), 4)
+        hybrid_sim = round(max(vector_similarity, 0.50 * vector_similarity + 0.50 * lexical_ratio), 4)
         return hybrid_sim
 
 
@@ -96,7 +122,10 @@ class VectorDBManager:
         if top_k is None:
             top_k = settings.TOP_K_RETRIEVAL
 
-        allowed_owners = {owner_id, "default_workspace", "legacy_dev_owner"} if owner_id else {"default_workspace", "legacy_dev_owner"}
+        if owner_id and owner_id not in ("default_workspace", "legacy_dev_owner"):
+            allowed_owners = {owner_id}
+        else:
+            allowed_owners = {"default_workspace", "legacy_dev_owner"}
 
         # 1. Vector Search Query with owner_id filter
         query_embedding = self.get_embedding(query_text)
@@ -133,44 +162,48 @@ class VectorDBManager:
                     continue
 
                 v_sim = round(max(0.0, 1.0 - dist), 4)
-                h_sim = self._compute_hybrid_score(query_text, doc, v_sim)
+                doc_name = meta.get("document_name", "Unknown")
+                h_sim = self._compute_hybrid_score(query_text, doc, v_sim, document_name=doc_name)
                 c_id = meta.get("chunk_id", f"chunk_{len(candidate_chunks)}")
                 
                 candidate_chunks[c_id] = {
                     "text": doc,
-                    "document_name": meta.get("document_name", "Unknown"),
+                    "document_name": doc_name,
                     "page_number": meta.get("page_number", 1),
                     "chunk_id": c_id,
                     "similarity_score": h_sim,
                     "owner_id": m_owner
                 }
 
-        # 2. Case-Insensitive Full KB Scan for entity/phrase query candidates
-        try:
-            all_db = self.get_all_chunks(owner_id=owner_id)
-            if all_db and all_db.get("documents"):
-                all_docs = all_db["documents"]
-                all_metas = all_db["metadatas"]
-                
-                for a_doc, a_meta in zip(all_docs, all_metas):
-                    m_owner = a_meta.get("owner_id", "default_workspace")
-                    if m_owner not in allowed_owners:
-                        continue
+        # 2. Case-Insensitive Full KB Scan for entity/phrase query candidates (run only if vector search returned < top_k or low max score)
+        max_v_score = max([c["similarity_score"] for c in candidate_chunks.values()]) if candidate_chunks else 0.0
+        if len(candidate_chunks) < top_k or max_v_score < 0.40:
+            try:
+                all_db = self.get_all_chunks(owner_id=owner_id, include_embeddings=False)
+                if all_db and all_db.get("documents"):
+                    all_docs = all_db["documents"]
+                    all_metas = all_db["metadatas"]
+                    
+                    for a_doc, a_meta in zip(all_docs, all_metas):
+                        m_owner = a_meta.get("owner_id", "default_workspace")
+                        if m_owner not in allowed_owners:
+                            continue
 
-                    c_id = a_meta.get("chunk_id", "")
-                    if c_id not in candidate_chunks:
-                        h_sim = self._compute_hybrid_score(query_text, a_doc, 0.0)
-                        if h_sim >= min_similarity:
-                            candidate_chunks[c_id] = {
-                                "text": a_doc,
-                                "document_name": a_meta.get("document_name", "Unknown"),
-                                "page_number": a_meta.get("page_number", 1),
-                                "chunk_id": c_id,
-                                "similarity_score": h_sim,
-                                "owner_id": m_owner
-                            }
-        except Exception as e:
-            logger.warning(f"Full-KB lexical scan fallback warning: {e}")
+                        c_id = a_meta.get("chunk_id", "")
+                        if c_id not in candidate_chunks:
+                            doc_name = a_meta.get("document_name", "Unknown")
+                            h_sim = self._compute_hybrid_score(query_text, a_doc, 0.0, document_name=doc_name)
+                            if h_sim >= min_similarity:
+                                candidate_chunks[c_id] = {
+                                    "text": a_doc,
+                                    "document_name": doc_name,
+                                    "page_number": a_meta.get("page_number", 1),
+                                    "chunk_id": c_id,
+                                    "similarity_score": h_sim,
+                                    "owner_id": m_owner
+                                }
+            except Exception as e:
+                logger.warning(f"Full-KB lexical scan fallback warning: {e}")
 
         # 3. Filter & Sort by Hybrid Similarity Score
         filtered = [c for c in candidate_chunks.values() if c["similarity_score"] >= min_similarity]
@@ -178,15 +211,18 @@ class VectorDBManager:
 
         return sorted_chunks[:top_k]
 
-    def get_all_chunks(self, owner_id: str = None) -> dict:
-        kwargs = {"include": ["documents", "metadatas", "embeddings"]}
+    def get_all_chunks(self, owner_id: str = None, include_embeddings: bool = False) -> dict:
+        inc = ["documents", "metadatas", "embeddings"] if include_embeddings else ["documents", "metadatas"]
         try:
-            results = self.collection.get(**kwargs)
+            results = self.collection.get(include=inc)
         except Exception:
-            results = self.collection.get(include=["documents", "metadatas", "embeddings"])
+            results = self.collection.get(include=["documents", "metadatas"])
 
         if results and results.get("metadatas"):
-            allowed_owners = {owner_id, "default_workspace", "legacy_dev_owner"} if owner_id else {"default_workspace", "legacy_dev_owner"}
+            if owner_id and owner_id not in ("default_workspace", "legacy_dev_owner"):
+                allowed_owners = {owner_id}
+            else:
+                allowed_owners = {"default_workspace", "legacy_dev_owner"}
             docs, metas, ids, embs = [], [], [], []
             raw_embs = results.get("embeddings")
             for i, (doc, meta, cid) in enumerate(zip(results["documents"], results["metadatas"], results["ids"])):
