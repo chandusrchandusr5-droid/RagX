@@ -14,7 +14,7 @@ async def query_rag_pipeline(request: QueryRequest, current_user: dict | None = 
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
-    owner_id = current_user["id"] if current_user else None
+    owner_id = current_user["id"] if (current_user and current_user.get("role") != "ADMIN") else None
 
     try:
         result = rag_engine.query(question=request.question, owner_id=owner_id, top_k=request.top_k)

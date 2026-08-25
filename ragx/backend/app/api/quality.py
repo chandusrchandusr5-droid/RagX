@@ -9,7 +9,7 @@ async def get_data_quality_audit(
     document_id: str | None = Query(None, description="Optional document ID or filename to audit individually"),
     current_user: dict | None = Depends(get_optional_user)
 ):
-    owner_id = current_user["id"] if current_user else "legacy_dev_owner"
+    owner_id = current_user["id"] if (current_user and current_user.get("role") != "ADMIN") else None
     try:
         service = DataQualityService()
         report = service.audit_knowledge_base(owner_id=owner_id, document_id=document_id)

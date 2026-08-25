@@ -91,7 +91,7 @@ async def get_evaluation_analytics(current_user: dict | None = Depends(get_optio
     """
     Returns aggregate evaluation analytics derived directly from persistent evaluation_history.json for the authenticated user.
     """
-    owner_id = current_user["id"] if current_user else "legacy_dev_owner"
+    owner_id = current_user["id"] if (current_user and current_user.get("role") != "ADMIN") else None
     try:
         return EvaluationHistoryService.get_analytics_summary(owner_id=owner_id)
     except Exception as e:
@@ -102,7 +102,7 @@ async def get_evaluation_history(limit: int = 50, current_user: dict | None = De
     """
     Returns recent persisted evaluation runs for log inspection and audit traceability for the authenticated user.
     """
-    owner_id = current_user["id"] if current_user else "legacy_dev_owner"
+    owner_id = current_user["id"] if (current_user and current_user.get("role") != "ADMIN") else None
     try:
         records = EvaluationHistoryService.get_history(limit=limit, owner_id=owner_id)
         return {

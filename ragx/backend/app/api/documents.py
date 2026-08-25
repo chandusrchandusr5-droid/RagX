@@ -102,7 +102,7 @@ async def upload_document(file: UploadFile = File(...), current_user: dict | Non
 
 @router.get("")
 async def list_documents(status: str = Query(None, description="Filter documents by status: ACTIVE or DELETED"), current_user: dict | None = Depends(get_optional_user)):
-    owner_id = current_user["id"] if current_user else "legacy_dev_owner"
+    owner_id = current_user["id"] if (current_user and current_user.get("role") != "ADMIN") else None
     documents = DocumentRegistryService.get_all_documents(status_filter=status, owner_id=owner_id)
     return {
         "total_documents": len(documents),
