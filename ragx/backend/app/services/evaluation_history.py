@@ -6,13 +6,20 @@ from app.core.config import settings
 
 logger = logging.getLogger("ragx.evaluation_history")
 
+_HISTORY_CACHE = None
+_HISTORY_MTIME = 0.0
+
 class EvaluationHistoryService:
     @classmethod
     def _load_history(cls, history_file_path: Path = None) -> list[dict]:
+        global _HISTORY_CACHE, _HISTORY_MTIME
         history_file = history_file_path or settings.EVAL_HISTORY_FILE
         if not history_file.exists():
             return []
         try:
+            mtime = history_file.stat().st_mtime
+            if _HISTORY_CACHE is not None and mtime == _HISTORY_MTIME:
+                return _HISTORY_CACHE
             with open(history_file, "r", encoding="utf-8") as f:
                 content = f.read()
                 if not content.strip():
@@ -23,7 +30,9 @@ class EvaluationHistoryService:
                     # Fallback for concatenated or corrupted JSON files
                     decoder = json.JSONDecoder()
                     data, _ = decoder.raw_decode(content)
-                return data if isinstance(data, list) else []
+                _HISTORY_CACHE = data if isinstance(data, list) else []
+                _HISTORY_MTIME = mtime
+                return _HISTORY_CACHE
         except Exception as e:
             logger.error(f"Failed to read evaluation history file '{history_file}': {e}")
             return []

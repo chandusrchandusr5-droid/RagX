@@ -4,6 +4,8 @@ import logging
 
 logger = logging.getLogger("ragx.document_parser")
 
+_PARSER_CACHE = {}
+
 class DocumentParser:
     @staticmethod
     def parse_pdf(file_path: Path) -> dict:
@@ -28,7 +30,6 @@ class DocumentParser:
                 full_text_list.append(page_text)
 
         doc.close()
-
 
         total_characters = sum(len(p["text"]) for p in pages_content)
         
@@ -61,9 +62,17 @@ class DocumentParser:
     @classmethod
     def parse_document(cls, file_path: Path) -> dict:
         ext = file_path.suffix.lower()
+        mtime = file_path.stat().st_mtime if file_path.exists() else 0
+        cache_key = (str(file_path), mtime)
+        if cache_key in _PARSER_CACHE:
+            return _PARSER_CACHE[cache_key]
+
         if ext == ".pdf":
-            return cls.parse_pdf(file_path)
+            res = cls.parse_pdf(file_path)
         elif ext in [".txt", ".md"]:
-            return cls.parse_txt(file_path)
+            res = cls.parse_txt(file_path)
         else:
             raise ValueError(f"Unsupported file format: {ext}")
+
+        _PARSER_CACHE[cache_key] = res
+        return res
