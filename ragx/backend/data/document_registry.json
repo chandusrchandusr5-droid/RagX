@@ -118,5 +118,50 @@
     "file_size": "5516.65 KB",
     "file_hash": "1d6af8878fc7cd7fe7cbf9e0b81c54e3",
     "owner_id": "default_workspace"
+  },
+  {
+    "document_id": "doc_bc5049eacd0b",
+    "document_name": "Attendance_Policy.pdf",
+    "original_filename": "Attendance_Policy.pdf",
+    "owner_id": "legacy_dev_owner",
+    "status": "ACTIVE",
+    "active_path": "C:\\Users\\chand\\OneDrive\\Dokumen\\Desktop\\RagX\\ragx\\backend\\data\\uploads\\Attendance_Policy.pdf",
+    "trash_path": "C:\\Users\\chand\\OneDrive\\Dokumen\\Desktop\\RagX\\ragx\\backend\\data\\trash\\Attendance_Policy.pdf",
+    "upload_date": "2026-10-06 19:10:13",
+    "deletion_date": null,
+    "total_pages": 2,
+    "total_chunks": 2,
+    "file_size": "1.55 KB",
+    "file_hash": "a5fd60f02d2ce8c1ada3e8c6004f1517"
+  },
+  {
+    "document_id": "doc_bdb4d20d5933",
+    "document_name": "Attendance_Rules_v2.pdf",
+    "original_filename": "Attendance_Rules_v2.pdf",
+    "owner_id": "legacy_dev_owner",
+    "status": "ACTIVE",
+    "active_path": "C:\\Users\\chand\\OneDrive\\Dokumen\\Desktop\\RagX\\ragx\\backend\\data\\uploads\\Attendance_Rules_v2.pdf",
+    "trash_path": "C:\\Users\\chand\\OneDrive\\Dokumen\\Desktop\\RagX\\ragx\\backend\\data\\trash\\Attendance_Rules_v2.pdf",
+    "upload_date": "2026-10-06 19:10:18",
+    "deletion_date": null,
+    "total_pages": 1,
+    "total_chunks": 1,
+    "file_size": "1.01 KB",
+    "file_hash": "40fef5e63b58b822f3fb11fb5e5f68c8"
+  },
+  {
+    "document_id": "doc_ff38361099b4",
+    "document_name": "Attendance_Policy_Copy.pdf",
+    "original_filename": "Attendance_Policy_Copy.pdf",
+    "owner_id": "legacy_dev_owner",
+    "status": "ACTIVE",
+    "active_path": "C:\\Users\\chand\\OneDrive\\Dokumen\\Desktop\\RagX\\ragx\\backend\\data\\uploads\\Attendance_Policy_Copy.pdf",
+    "trash_path": "C:\\Users\\chand\\OneDrive\\Dokumen\\Desktop\\RagX\\ragx\\backend\\data\\trash\\Attendance_Policy_Copy.pdf",
+    "upload_date": "2026-10-06 19:10:18",
+    "deletion_date": null,
+    "total_pages": 2,
+    "total_chunks": 2,
+    "file_size": "1.55 KB",
+    "file_hash": "4f7fe17cc00b26b9671fc01643a15272"
   }
 ]
