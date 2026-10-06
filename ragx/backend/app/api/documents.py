@@ -1,5 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Depends
 from fastapi.responses import FileResponse
+from typing import Optional
 from pathlib import Path
 import shutil
 import os
@@ -29,7 +30,7 @@ def calculate_file_hash(file_path: Path) -> str:
     return hasher.hexdigest()
 
 @router.post("/upload")
-async def upload_document(file: UploadFile = File(...), current_user: dict | None = Depends(get_optional_user)):
+async def upload_document(file: UploadFile = File(...), current_user: Optional[dict] = Depends(get_optional_user)):
     filename = file.filename
     ext = Path(filename).suffix.lower()
 
@@ -101,7 +102,7 @@ async def upload_document(file: UploadFile = File(...), current_user: dict | Non
 
 
 @router.get("")
-async def list_documents(status: str = Query(None, description="Filter documents by status: ACTIVE or DELETED"), current_user: dict | None = Depends(get_optional_user)):
+async def list_documents(status: str = Query(None, description="Filter documents by status: ACTIVE or DELETED"), current_user: Optional[dict] = Depends(get_optional_user)):
     owner_id = current_user["id"] if (current_user and current_user.get("role") != "ADMIN") else None
     documents = DocumentRegistryService.get_all_documents(status_filter=status, owner_id=owner_id)
     return {
@@ -111,7 +112,7 @@ async def list_documents(status: str = Query(None, description="Filter documents
 
 
 @router.get("/{document_id}/view")
-async def view_document(document_id: str, current_user: dict | None = Depends(get_optional_user)):
+async def view_document(document_id: str, current_user: Optional[dict] = Depends(get_optional_user)):
     """
     Secure inline PDF / Document Viewer endpoint.
     Serves active or trash files using document_id.
@@ -158,7 +159,7 @@ async def view_document(document_id: str, current_user: dict | None = Depends(ge
 
 
 @router.delete("/{document_id}")
-async def soft_delete_document(document_id: str, current_user: dict | None = Depends(get_optional_user)):
+async def soft_delete_document(document_id: str, current_user: Optional[dict] = Depends(get_optional_user)):
     """
     Soft-deletes a document (ACTIVE -> DELETED).
     Moves file to TRASH_DIR and purges ChromaDB vector chunks by document_id.
@@ -204,7 +205,7 @@ async def soft_delete_document(document_id: str, current_user: dict | None = Dep
 
 
 @router.post("/{document_id}/restore")
-async def restore_document(document_id: str, current_user: dict | None = Depends(get_optional_user)):
+async def restore_document(document_id: str, current_user: Optional[dict] = Depends(get_optional_user)):
     """
     Restores a soft-deleted document (DELETED -> ACTIVE).
     Moves file back to UPLOAD_DIR and re-indexes ChromaDB vector chunks.
@@ -261,7 +262,7 @@ async def restore_document(document_id: str, current_user: dict | None = Depends
 
 
 @router.delete("/{document_id}/permanent")
-async def permanently_delete_document(document_id: str, current_user: dict | None = Depends(get_optional_user)):
+async def permanently_delete_document(document_id: str, current_user: Optional[dict] = Depends(get_optional_user)):
     """
     Permanently deletes a document from disk, purges metadata, and removes all ChromaDB vector chunks.
     """

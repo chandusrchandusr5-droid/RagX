@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from app.services.rag_engine import rag_engine
@@ -10,7 +11,7 @@ class QueryRequest(BaseModel):
     top_k: int = 3
 
 @router.post("/query")
-async def query_rag_pipeline(request: QueryRequest, current_user: dict | None = Depends(get_optional_user)):
+async def query_rag_pipeline(request: QueryRequest, current_user: Optional[dict] = Depends(get_optional_user)):
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 

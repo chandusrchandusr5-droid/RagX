@@ -20,7 +20,7 @@ class QueryAndEvaluateRequest(BaseModel):
     top_k: int = 3
 
 @router.post("/evaluate")
-async def evaluate_rag_answer(request: EvaluationRequest, current_user: dict | None = Depends(get_optional_user)):
+async def evaluate_rag_answer(request: EvaluationRequest, current_user: Optional[dict] = Depends(get_optional_user)):
     if not request.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
 
@@ -46,7 +46,7 @@ async def evaluate_rag_answer(request: EvaluationRequest, current_user: dict | N
         raise HTTPException(status_code=500, detail=f"Answer evaluation failed: {str(e)}")
 
 @router.post("/query-and-evaluate")
-async def query_and_evaluate_rag(request: QueryAndEvaluateRequest, current_user: dict | None = Depends(get_optional_user)):
+async def query_and_evaluate_rag(request: QueryAndEvaluateRequest, current_user: Optional[dict] = Depends(get_optional_user)):
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
@@ -87,7 +87,7 @@ async def query_and_evaluate_rag(request: QueryAndEvaluateRequest, current_user:
         raise HTTPException(status_code=500, detail=f"RAG query and evaluation failed: {str(e)}")
 
 @router.get("/analytics")
-async def get_evaluation_analytics(current_user: dict | None = Depends(get_optional_user)):
+async def get_evaluation_analytics(current_user: Optional[dict] = Depends(get_optional_user)):
     """
     Returns aggregate evaluation analytics derived directly from persistent evaluation_history.json for the authenticated user.
     """
@@ -98,7 +98,7 @@ async def get_evaluation_analytics(current_user: dict | None = Depends(get_optio
         raise HTTPException(status_code=500, detail=f"Failed to compute evaluation analytics: {str(e)}")
 
 @router.get("/history")
-async def get_evaluation_history(limit: int = 50, current_user: dict | None = Depends(get_optional_user)):
+async def get_evaluation_history(limit: int = 50, current_user: Optional[dict] = Depends(get_optional_user)):
     """
     Returns recent persisted evaluation runs for log inspection and audit traceability for the authenticated user.
     """
