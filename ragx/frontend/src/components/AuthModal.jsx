@@ -1,14 +1,23 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { loginUser, registerUser } from '../services/api';
-import { Zap, Lock, Mail, User, ArrowRight, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Zap, Lock, Mail, User, ArrowRight, AlertCircle, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 
 export default function AuthModal({ onLoginSuccess }) {
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setEmail('');
+    setPassword('');
+    setFullName('');
+    setError(null);
+    setShowPassword(false);
+  }, [isRegister]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -79,7 +88,7 @@ export default function AuthModal({ onLoginSuccess }) {
         </div>
 
         {/* Form Content */}
-        <form onSubmit={handleSubmit} className="p-8 space-y-4">
+        <form onSubmit={handleSubmit} className="p-8 space-y-4" autoComplete="off">
           {error && (
             <div className="flex items-start space-x-2 p-3 bg-red-950/60 border border-red-800/80 rounded-xl text-red-200 text-xs">
               <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
@@ -95,6 +104,7 @@ export default function AuthModal({ onLoginSuccess }) {
                 <input
                   type="text"
                   required
+                  autoComplete="off"
                   placeholder="John Doe"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
@@ -111,6 +121,7 @@ export default function AuthModal({ onLoginSuccess }) {
               <input
                 type="email"
                 required
+                autoComplete="off"
                 placeholder="user@domain.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -122,16 +133,25 @@ export default function AuthModal({ onLoginSuccess }) {
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1.5">Password</label>
             <div className="relative">
-              <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+              <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3 pointer-events-none" />
               <input
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 required
                 minLength={6}
+                autoComplete="new-password"
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 transition-colors"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-10 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 transition-colors"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-2.5 p-1 text-slate-400 hover:text-slate-200 transition-colors focus:outline-none cursor-pointer"
+                title={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
             </div>
           </div>
 

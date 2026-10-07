@@ -5,21 +5,7 @@ import { queryAndEvaluateRag } from '../services/api';
 export default function RagChat() {
   const [question, setQuestion] = useState('');
   const [loading, setLoading] = useState(false);
-  const getUserKey = () => {
-    try {
-      const u = JSON.parse(localStorage.getItem('ragx_user') || '{}');
-      return u?.id ? `ragx_chat_history_${u.id}` : 'ragx_chat_history_guest';
-    } catch (e) {
-      return 'ragx_chat_history_guest';
-    }
-  };
-
-  const [chatHistory, setChatHistory] = useState(() => {
-    try {
-      const saved = localStorage.getItem(getUserKey());
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) { return []; }
-  });
+  const [chatHistory, setChatHistory] = useState([]);
   const [error, setError] = useState(null);
 
   const handleSubmit = async (e) => {
@@ -43,11 +29,7 @@ export default function RagChat() {
         showEvidence: false,
         showEval: true
       };
-      setChatHistory((prev) => {
-        const updated = [newEntry, ...prev];
-        try { localStorage.setItem(getUserKey(), JSON.stringify(updated)); } catch (e) {}
-        return updated;
-      });
+      setChatHistory((prev) => [newEntry, ...prev]);
     } catch (err) {
       console.error(err);
       setError(err.response?.data?.detail || 'Failed to generate RAG response.');

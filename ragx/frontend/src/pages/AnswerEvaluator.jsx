@@ -17,33 +17,14 @@ import {
 import { queryAndEvaluateRag, evaluateAnswer } from '../services/api';
 
 export default function AnswerEvaluator() {
-  const getUserKey = (baseKey) => {
-    try {
-      const u = JSON.parse(localStorage.getItem('ragx_user') || '{}');
-      return u?.id ? `${baseKey}_${u.id}` : `${baseKey}_guest`;
-    } catch (e) {
-      return `${baseKey}_guest`;
-    }
-  };
-
-  const [query, setQuery] = useState(() => localStorage.getItem(getUserKey('ragx_last_eval_query')) || '');
+  const [query, setQuery] = useState('');
   const [useCustomOverride, setUseCustomOverride] = useState(false);
   const [customAnswer, setCustomAnswer] = useState('');
   const [customEvidenceText, setCustomEvidenceText] = useState('');
   
   const [loading, setLoading] = useState(false);
-  const [report, setReport] = useState(() => {
-    try {
-      const saved = localStorage.getItem(getUserKey('ragx_last_eval_report'));
-      return saved ? JSON.parse(saved) : null;
-    } catch (e) { return null; }
-  });
-  const [ragResult, setRagResult] = useState(() => {
-    try {
-      const saved = localStorage.getItem(getUserKey('ragx_last_eval_rag'));
-      return saved ? JSON.parse(saved) : null;
-    } catch (e) { return null; }
-  });
+  const [report, setReport] = useState(null);
+  const [ragResult, setRagResult] = useState(null);
   const [error, setError] = useState(null);
 
   const handleRunEvaluation = async (e) => {
@@ -64,9 +45,6 @@ export default function AnswerEvaluator() {
         };
         setRagResult(ragRes);
         setReport(res.evaluation_report);
-        localStorage.setItem(getUserKey('ragx_last_eval_query'), query.trim());
-        localStorage.setItem(getUserKey('ragx_last_eval_rag'), JSON.stringify(ragRes));
-        localStorage.setItem(getUserKey('ragx_last_eval_report'), JSON.stringify(res.evaluation_report));
       } else {
         // Mode 2: Manual Custom Answer & Context Override (For testing specific edge-case scenarios)
         const customEvidence = customEvidenceText.trim() ? [
@@ -97,9 +75,6 @@ export default function AnswerEvaluator() {
         };
         setRagResult(ragRes);
         setReport(res);
-        localStorage.setItem(getUserKey('ragx_last_eval_query'), query.trim());
-        localStorage.setItem(getUserKey('ragx_last_eval_rag'), JSON.stringify(ragRes));
-        localStorage.setItem(getUserKey('ragx_last_eval_report'), JSON.stringify(res));
       }
     } catch (err) {
       console.error(err);
