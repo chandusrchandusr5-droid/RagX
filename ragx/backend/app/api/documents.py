@@ -65,8 +65,8 @@ async def upload_document(file: UploadFile = File(...), current_user: Optional[d
         # Parse document
         parsed_doc = DocumentParser.parse_document(save_path)
 
-        # Purge any existing vector chunks for this document_id prior to indexing
-        vector_db.delete_document_chunks_by_id(doc_id, owner_id=owner_id)
+        # Purge any existing vector chunks for this document_id or filename prior to indexing
+        vector_db.delete_document_chunks_by_id(doc_id, owner_id=owner_id, document_name=filename)
 
         # Index chunks in ChromaDB tagged with document_id and owner_id
         num_chunks = rag_engine.index_document_chunks(
@@ -186,8 +186,8 @@ async def soft_delete_document(document_id: str, current_user: Optional[dict] = 
         except Exception as e:
             logger.warning(f"Error moving file to trash: {e}")
 
-    # 2. Purge ChromaDB vector chunks by document_id
-    deleted_chunks = vector_db.delete_document_chunks_by_id(doc_id, owner_id=owner_id)
+    # 2. Purge ChromaDB vector chunks by document_id and document_name
+    deleted_chunks = vector_db.delete_document_chunks_by_id(doc_id, owner_id=owner_id, document_name=filename)
 
     # 3. Update registry state
     updated = DocumentRegistryService.soft_delete_document(doc_id, owner_id=owner_id)

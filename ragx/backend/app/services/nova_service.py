@@ -50,10 +50,10 @@ class NovaAssistant:
         elif "reliability" in text or "s_ans" in text or "score" in text or "formula" in text:
             reply = (
                 "Answer Reliability (S_Ans) is computed using a weighted composite formula:\n\n"
-                "• **Claim Support Score (S_supp - 50%):** Percentage of extracted claims verified as SUPPORTED.\n"
-                "• **Citation Coverage (S_cov - 25%):** Percentage of claims trace-mapped to 5-tuple citations.\n"
-                "• **Retrieval Similarity (S_sim - 25%):** Mean cosine similarity of top retrieved chunks.\n\n"
-                "**Formula:** `S_Ans = 0.50*S_supp + 0.25*S_cov + 0.25*S_sim`"
+                "• **Claim Support Score (S_supp - 60%):** Percentage of extracted claims verified as SUPPORTED and RELEVANT.\n"
+                "• **Citation Coverage (S_cov - 20%):** Percentage of claims trace-mapped to 5-tuple citations.\n"
+                "• **Retrieval Similarity (S_sim - 20%):** Mean cosine similarity of top retrieved chunks.\n\n"
+                "**Formula:** `S_Ans = 0.60*S_supp + 0.20*S_cov + 0.20*S_sim`"
             )
             category = "RELIABILITY_METHODOLOGY"
 

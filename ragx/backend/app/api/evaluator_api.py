@@ -13,7 +13,7 @@ router = APIRouter(prefix="/evaluator", tags=["RAG Answer Reliability Evaluator"
 class EvaluationRequest(BaseModel):
     query: str
     answer: str
-    retrieved_evidence: Optional[List[Dict[str, Any]]] = []
+    retrieved_evidence: Optional[List[Dict[str, Any]]] = None
 
 class QueryAndEvaluateRequest(BaseModel):
     question: str
@@ -28,7 +28,7 @@ async def evaluate_rag_answer(request: EvaluationRequest, current_user: Optional
 
     try:
         evidence = request.retrieved_evidence
-        if not evidence and request.query.strip():
+        if evidence is None and request.query.strip():
             # Fallback: Retrieve Top-K evidence from ChromaDB knowledge base if omitted in custom evaluation
             rag_result = rag_engine.query(question=request.query, owner_id=owner_id, top_k=3)
             evidence = rag_result.get("retrieved_evidence", [])

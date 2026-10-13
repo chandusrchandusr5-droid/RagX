@@ -140,15 +140,6 @@ Answer clearly, concisely, and specifically based strictly on the context above:
         if not context_chunks:
             return "The requested information could not be found in the provided document context."
 
-        # Generic vector embedding semantic relevance pre-check
-        try:
-            max_sim = max([c.get("similarity_score", 0.0) for c in context_chunks]) if context_chunks else 0.0
-            if max_sim < 0.15:
-                return "The requested information could not be found in the provided document context."
-        except Exception as e:
-            logger.warning(f"Semantic relevance check warning: {e}")
-
-        import re
         ENGLISH_STOPWORDS = {
             "a", "an", "the", "and", "or", "but", "if", "because", "as", "until", "while",
             "of", "at", "by", "for", "with", "about", "against", "between", "into", "through",
@@ -160,6 +151,24 @@ Answer clearly, concisely, and specifically based strictly on the context above:
             "should", "now", "is", "am", "are", "was", "were", "be", "been", "being",
             "have", "has", "had", "having", "do", "does", "did", "doing"
         }
+
+        # Generic vector embedding and token relevance pre-check
+        try:
+            q_tokens_check = [w.lower() for w in re.findall(r'\w+', question) if w.lower() not in ENGLISH_STOPWORDS and len(w) > 1]
+            if not q_tokens_check:
+                q_tokens_check = [w.lower() for w in re.findall(r'\w+', question)]
+
+            has_topical_relevance = False
+            for c in context_chunks:
+                c_txt = c.get("text", "").lower()
+                sim = c.get("similarity_score", 0.0)
+                if any(t in c_txt for t in q_tokens_check) or sim >= 0.25:
+                    has_topical_relevance = True
+                    break
+            if not has_topical_relevance:
+                return "The requested information could not be found in the provided document context."
+        except Exception as e:
+            logger.warning(f"Semantic relevance check warning: {e}")
         q_tokens = [w.lower() for w in re.findall(r'\w+', question) if w.lower() not in ENGLISH_STOPWORDS and len(w) > 1]
         if not q_tokens:
             q_tokens = [w.lower() for w in re.findall(r'\w+', question)]
@@ -212,8 +221,8 @@ Answer clearly, concisely, and specifically based strictly on the context above:
             # Standalone page/chapter numbers e.g. "23", "Page 23", "4"
             if re.match(r'^(?:page\s+)?\d+$', clean_t, flags=re.IGNORECASE):
                 return True
-            # Short title headers without punctuation or full sentences e.g. "23 Nationalism in Europe", "Visualising the Nation"
-            if len(words) <= 6 and not any(punct in clean_t for punct in ['.', ':', ';', '?']):
+            # Short title headers without punctuation, full sentences, or data numbers e.g. "23 Nationalism in Europe", "Visualising the Nation"
+            if len(words) <= 6 and not any(punct in clean_t for punct in ['.', ':', ';', '?']) and not re.search(r'\d+', clean_t):
                 return True
             return False
 
@@ -223,11 +232,33 @@ Answer clearly, concisely, and specifically based strictly on the context above:
             IRREGULAR_MAP = {"stand": "stood", "stood": "stand", "is": "are", "was": "were"}
             if IRREGULAR_MAP.get(q_tok) in rec_tokens:
                 return True
-            if len(q_tok) >= 4:
-                prefix = q_tok[:4]
-                if any(rt.startswith(prefix) or q_tok.startswith(rt[:4]) for rt in rec_tokens if len(rt) >= 4):
+            # For words >= 5 letters, match standard English inflectional stems (e.g. policies/policy, requirements/requirement)
+            if len(q_tok) >= 5:
+                stem = q_tok.rstrip("s").rstrip("ing").rstrip("ed").rstrip("es")
+                if len(stem) >= 4 and any(rt.startswith(stem) for rt in rec_tokens):
                     return True
             return False
+
+        # Generic grounded subject check: If query specifies subject entities absent from context, abstain
+        GENERIC_QUERY_WORDS = {
+            "what", "where", "when", "why", "how", "which", "who", "whose",
+            "marks", "mark", "obtained", "score", "scores", "grade", "grades",
+            "result", "results", "total", "percentage", "value", "values",
+            "details", "detail", "information", "info", "tell", "show", "list",
+            "give", "name", "find", "status", "mention", "explain", "describe",
+            "student", "stream", "complete", "full", "overall", "entire",
+            "whole", "all", "summary", "everything", "any", "about", "regarding",
+            "requirement", "requirements", "policy", "policies", "rule", "rules",
+            "criteria", "cutoff", "condition", "conditions"
+        }
+        q_subject_tokens = [w for w in q_tokens if w not in GENERIC_QUERY_WORDS and len(w) > 2]
+        if q_subject_tokens:
+            matched_subjects = [
+                t for t in q_subject_tokens
+                if any(tokens_match(t, {w}) for w in all_context_tokens)
+            ]
+            if len(matched_subjects) / len(q_subject_tokens) < 0.6:
+                return "The requested information could not be found in the provided document context."
 
         # Collect candidate entries across retrieved context chunks using generic TF-IDF token specificity scoring
         def clean_fragment(t: str) -> str:
@@ -276,6 +307,14 @@ Answer clearly, concisely, and specifically based strictly on the context above:
                             joined = " ".join(code_parts)
                             add_rec(joined)
                 
+                # Group lines between consecutive record codes into complete tabular rows
+                code_indices = [i for i, l in enumerate(raw_lines) if any(code == l.strip() or l.strip().startswith(code) for code in record_codes)]
+                if len(code_indices) >= 2:
+                    for k, c_idx in enumerate(code_indices):
+                        next_c_idx = code_indices[k + 1] if k + 1 < len(code_indices) else min(c_idx + 12, len(raw_lines))
+                        joined_row = " ".join(raw_lines[c_idx:next_c_idx])
+                        add_rec(joined_row)
+
                 for i in range(len(raw_lines) - 1):
                     joined = raw_lines[i] + " " + raw_lines[i+1]
                     add_rec(joined)
@@ -323,6 +362,9 @@ Answer clearly, concisely, and specifically based strictly on the context above:
                     # Skip empty fragments
                     continue
 
+                if q_subject_tokens and not any(tokens_match(st, rec_tokens) for st in q_subject_tokens):
+                    continue
+
                 matching_tokens = [t for t in q_tokens if tokens_match(t, rec_tokens)]
                 if matching_tokens:
                     weighted_coverage = sum(token_weights[t] for t in matching_tokens) / max_weight_possible
@@ -344,14 +386,16 @@ Answer clearly, concisely, and specifically based strictly on the context above:
         valid_candidates = [e for e in candidate_entries if not is_heading_or_question_repeat(e["text"]) and not is_non_explanatory_header_or_title(e["text"])]
 
         if not valid_candidates:
-            if context_chunks:
-                best_c = context_chunks[0]
-                return f"Based on the retrieved document [{best_c['document_name']}, Page {best_c['page_number']}]: {best_c['text']}"
             return "The requested information could not be found in the provided document context."
 
         # Sort candidates by generic score descending
         valid_candidates.sort(key=lambda x: x["score"], reverse=True)
         best_entry = valid_candidates[0]
+
+        if q_subject_tokens:
+            best_tokens = set(w.lower() for w in re.findall(r'\w+', best_entry["text"]))
+            if not any(tokens_match(t, best_tokens) for t in q_subject_tokens):
+                return "The requested information could not be found in the provided document context."
 
         best_doc = best_entry["doc_name"]
         best_page = best_entry["page_number"]
@@ -372,22 +416,25 @@ Answer clearly, concisely, and specifically based strictly on the context above:
                     return ""
             if t.endswith(('.', '!', '?')):
                 return t
-            last_punct = max(t.rfind('.'), t.rfind('!'), t.rfind('?'))
-            if last_punct > 15:
-                return t[:last_punct+1]
+            m_punct = list(re.finditer(r'[.!?](?:\s+|$)', t))
+            if m_punct and m_punct[-1].end() > 15:
+                return t[:m_punct[-1].end()].strip()
             return t
 
         unique_lines = []
         for e in high_cov_entries:
             txt = clean_sentence_boundaries(e["text"], e.get("chunk_text", ""))
             parent_chunk = e.get("chunk_text", "")
-            if parent_chunk and txt not in parent_chunk:
-                # Trim back to clean sentence in parent_chunk
-                last_punct = max(parent_chunk.rfind('.'), parent_chunk.rfind('!'), parent_chunk.rfind('?'))
-                if last_punct > 20:
-                    txt = parent_chunk[:last_punct+1]
-                else:
-                    txt = parent_chunk
+            if parent_chunk:
+                norm_txt = re.sub(r'\s+', ' ', txt)
+                norm_chunk = re.sub(r'\s+', ' ', parent_chunk)
+                if norm_txt not in norm_chunk:
+                    # Trim back to clean sentence in parent_chunk
+                    last_punct = max(parent_chunk.rfind('.'), parent_chunk.rfind('!'), parent_chunk.rfind('?'))
+                    if last_punct > 20:
+                        txt = parent_chunk[:last_punct+1]
+                    else:
+                        txt = parent_chunk
             if len(txt.split()) >= 6 and not any(txt in existing or existing in txt for existing in unique_lines):
                 unique_lines.append(txt)
 

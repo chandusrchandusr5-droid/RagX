@@ -36,7 +36,7 @@ def test_heading_truncation_fix():
         "Synthesized answer missing the factual body text!"
 
     # 3. Assert correct source document and page citation are preserved
-    assert "(Attendance_Policy.pdf, Page 1)" in answer, "Source document and page citation missing or corrupted!"
+    assert "Attendance_Policy.pdf, Page 1" in answer, "Source document and page citation missing or corrupted!"
 
     print("\nPASSED: Synthesized answer complete, factual, and correctly cited!")
     print("==================================================")

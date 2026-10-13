@@ -180,25 +180,35 @@ class EvidenceMatcher:
             best_chunk_idx = int(np.argmax(sim_matrix[i]))
             best_sim = float(sim_matrix[i, best_chunk_idx])
 
-            best_chunk = retrieved_chunks[best_chunk_idx]
-            ev_text = best_chunk.get("text", "")
-            chunk_id = best_chunk.get("id") or best_chunk.get("chunk_id", "N/A")
-            doc_name = best_chunk.get("document_name", "Unknown")
-            page_num = best_chunk.get("page_number", 1)
-
-            # Direct Substring Containment Check for exact textual evidence match
+            # Direct Substring Containment Check across retrieved chunks for exact textual evidence match
             if ":" in c_text and "page" in c_text.lower()[:30]:
                 c_text_clean = c_text.split(":", 1)[1].strip()
             else:
                 c_text_clean = c_text.strip()
 
             clean_c = re.sub(r'[^a-z0-9]', '', c_text_clean.lower())
-            clean_ev = re.sub(r'[^a-z0-9]', '', ev_text.lower())
+            is_substring_match = False
 
-            is_substring_match = bool(clean_c and len(clean_c) >= 2 and (clean_c in clean_ev or clean_c[:30] in clean_ev))
+            # Check if any retrieved chunk contains the claim as a substring
+            for chk_idx, chk in enumerate(retrieved_chunks):
+                clean_chk = re.sub(r'[^a-z0-9]', '', chk.get("text", "").lower())
+                if clean_c and len(clean_c) >= 2 and (clean_c in clean_chk or clean_c[:30] in clean_chk):
+                    best_chunk_idx = chk_idx
+                    best_sim = max(float(sim_matrix[i, chk_idx]), 0.90)
+                    is_substring_match = True
+                    break
 
-            if is_substring_match:
-                best_sim = max(best_sim, 0.90)
+            best_chunk = retrieved_chunks[best_chunk_idx]
+            ev_text = best_chunk.get("text", "")
+            chunk_id = best_chunk.get("id") or best_chunk.get("chunk_id", "N/A")
+            doc_name = best_chunk.get("document_name", "Unknown")
+            page_num = best_chunk.get("page_number", 1)
+
+            if not is_substring_match:
+                clean_ev = re.sub(r'[^a-z0-9]', '', ev_text.lower())
+                is_substring_match = bool(clean_c and len(clean_c) >= 2 and (clean_c in clean_ev or clean_c[:30] in clean_ev))
+                if is_substring_match:
+                    best_sim = max(best_sim, 0.90)
 
             all_top_sims.append(best_sim)
 
@@ -224,8 +234,17 @@ class EvidenceMatcher:
 
             term_coverage_ratio = (len(matched_content_tokens) / len(c_content_tokens)) if c_content_tokens else 1.0
 
+            # Query Relevance & Evidence Support Gate: Verify if best_chunk is topically relevant to user query
+            chunk_q_rel = float(np.dot(chunk_norms[best_chunk_idx], q_norm)) if query else 1.0
+            chunk_has_q_tokens = any(t in ev_text.lower() or any(t.startswith(et[:4]) or et.startswith(t[:4]) for et in ev_content_tokens if len(et) >= 3 and len(t) >= 3) for t in q_tokens) if q_tokens else True
+
+            is_chunk_relevant_to_query = bool(chunk_has_q_tokens or (chunk_q_rel >= 0.35))
+
             # Determine Factual Support Status via Generic Proposition Verification
-            if claim_nums and ev_nums and not set(claim_nums).issubset(set(ev_nums)) and best_sim >= 0.50:
+            if not is_chunk_relevant_to_query:
+                support_status = "UNSUPPORTED"
+                disparity_detail = f"Retrieved evidence snippet from '{doc_name}' is not topically relevant to the user query ('{query}')."
+            elif claim_nums and ev_nums and not set(claim_nums).issubset(set(ev_nums)) and best_sim >= 0.50:
                 support_status = "CONTRADICTED"
                 disparity_detail = f"Claim mentions '{', '.join(claim_nums)}' while evidence states '{', '.join(ev_nums)}'."
             elif claim_nums and not set(claim_nums).issubset(set(ev_nums)) and not is_substring_match:
@@ -272,7 +291,7 @@ class EvidenceMatcher:
                 if is_bare_entity_claim and q_predicate_tokens:
                     relevance_classification = "SUPPORTED_IRRELEVANT"
                     disparity_detail += " Note: Claim contains only entity identifiers but fails to answer the question predicate (Entity-Only Fragment)."
-                elif (q_rel_score >= 0.65 and len(query.strip()) > 3) or (has_q_token_overlap and q_rel_score >= 0.35 and len(query.strip()) > 3) or (bool(standalone_claim_nums) and bool(q_predicate_tokens) and support_status == "SUPPORTED"):
+                elif (q_rel_score >= 0.50 and len(query.strip()) > 3) or (has_q_token_overlap and q_rel_score >= 0.25 and len(query.strip()) > 3) or (bool(standalone_claim_nums) and is_chunk_relevant_to_query and chunk_has_q_tokens and chunk_q_rel >= 0.35 and len(query.strip()) > 3):
                     relevance_classification = "SUPPORTED_RELEVANT"
                 else:
                     relevance_classification = "SUPPORTED_IRRELEVANT"
@@ -310,7 +329,13 @@ class EvidenceMatcher:
                 "disparity_detail": disparity_detail
             })
 
-        avg_retrieval_sim = float(np.mean(all_top_sims)) if all_top_sims else 0.0
+        # Calculate true query-to-chunk average retrieval similarity across retrieved chunks
+        if query and retrieved_chunks:
+            q_sims = [max(0.0, float(np.dot(q_norm, chunk_norms[j]))) for j in range(len(retrieved_chunks))]
+            avg_retrieval_sim = float(np.mean(q_sims)) if q_sims else 0.0
+        else:
+            avg_retrieval_sim = float(np.mean(all_top_sims)) if all_top_sims else 0.0
+
         return matched_claims, round(avg_retrieval_sim, 4)
 
 
@@ -533,14 +558,15 @@ class AnswerEvaluator:
 
 
         # -------------------------------------------------------------
-        # STEP 1: Check Empty / Insufficient Evidence State
+        # STEP 1: Check Empty / Insufficient Evidence State or Not-Found Response
         # -------------------------------------------------------------
         has_topk_evidence = bool(retrieved_evidence and len(retrieved_evidence) > 0)
+        is_not_found_answer = answer.strip().lower().startswith("the requested information could not be found")
         
         # Extract Claims
         claims = ClaimExtractor.extract_claims(answer)
         
-        if not has_topk_evidence:
+        if not has_topk_evidence or is_not_found_answer:
             # Execute Full-KB Oracle to check if evidence exists elsewhere in KB
             oracle_res = FullKBRetrievalOracle.search_oracle(query, similarity_threshold=0.50, owner_id=owner_id)
             
@@ -692,8 +718,8 @@ class AnswerEvaluator:
         n_unsupp = sum(1 for c in claims_analysis if c["support_status"] == "UNSUPPORTED")
         n_contradict = sum(1 for c in claims_analysis if c["support_status"] == "CONTRADICTED")
 
-        # Hallucination Risk strictly measures factual fabrication / contradiction
-        if n_contradict > 0 or (tot_claims > 0 and (n_unsupp / tot_claims) > 0.33):
+        # Hallucination Risk strictly measures factual fabrication / contradiction / complete lack of query grounding
+        if n_contradict > 0 or (tot_claims > 0 and (n_unsupp / tot_claims) > 0.33) or (tot_claims > 0 and n_rel_supp == 0):
             h_risk = "HIGH"
         elif n_unsupp > 0:
             h_risk = "MEDIUM"
@@ -710,7 +736,7 @@ class AnswerEvaluator:
                 rel_status = "PARTIALLY_RELIABLE"
             else:
                 rel_status = "UNRELIABLE"
-        elif composite_score >= 60.0 and failure_category not in ("RETRIEVAL_FAILURE", "EVIDENCE_INSUFFICIENCY"):
+        elif composite_score >= 60.0 and failure_category not in ("RETRIEVAL_FAILURE", "EVIDENCE_INSUFFICIENCY") and n_rel_supp > 0:
             rel_status = "PARTIALLY_RELIABLE"
         else:
             rel_status = "UNRELIABLE"

@@ -28,10 +28,24 @@ class VectorDBManager:
     def __init__(self):
         logger.info(f"Initializing ChromaDB client at {settings.CHROMA_DIR}")
         self.client = chromadb.PersistentClient(path=str(settings.CHROMA_DIR))
-        self.collection = self.client.get_or_create_collection(
-            name=settings.COLLECTION_NAME,
-            metadata={"hnsw:space": "cosine"}
-        )
+        self._collection = None
+
+    @property
+    def collection(self):
+        if self._collection is None:
+            self._collection = self.client.get_or_create_collection(
+                name=settings.COLLECTION_NAME,
+                metadata={"hnsw:space": "cosine"}
+            )
+        else:
+            try:
+                self._collection.count()
+            except Exception:
+                self._collection = self.client.get_or_create_collection(
+                    name=settings.COLLECTION_NAME,
+                    metadata={"hnsw:space": "cosine"}
+                )
+        return self._collection
 
     @property
     def embedding_model(self):
@@ -115,8 +129,12 @@ class VectorDBManager:
                 elif doc_ratio >= 0.50:
                     lexical_ratio = max(lexical_ratio, 0.70)
 
-        # Smooth continuous hybrid score that boosts vector similarity without penalizing strong vector matches
-        hybrid_sim = round(max(vector_similarity, 0.50 * vector_similarity + 0.50 * lexical_ratio), 4)
+        # Smooth continuous hybrid score that boosts vector similarity without penalizing strong vector matches.
+        # If query has specific terms but zero lexical overlap and low vector similarity, prevent artificial similarity boost.
+        if q_tokens and lexical_ratio == 0.0 and vector_similarity < 0.40 and not has_phrase_match:
+            hybrid_sim = round(vector_similarity * 0.50, 4)
+        else:
+            hybrid_sim = round(max(vector_similarity, 0.50 * vector_similarity + 0.50 * lexical_ratio), 4)
         return hybrid_sim
 
 
@@ -232,29 +250,41 @@ class VectorDBManager:
             results = {"documents": docs, "metadatas": metas, "ids": ids, "embeddings": embs if embs else None}
         return results
 
-    def delete_document_chunks_by_id(self, document_id: str, owner_id: str = None) -> int:
+    def delete_document_chunks_by_id(self, document_id: str, owner_id: str = None, document_name: str = None) -> int:
         """
-        Deletes all vector chunks from ChromaDB collection matching document_id (or fallback document_name).
+        Deletes all vector chunks from ChromaDB collection matching document_id and/or document_name.
         Returns the count of deleted chunks.
         """
         try:
-            where_clause = {"document_id": document_id}
-            results = self.collection.get(where=where_clause)
-            if not results or not results.get("ids"):
-                results = self.collection.get(where={"document_name": document_id})
-                if not results or not results.get("ids"):
-                    return 0
+            chunk_ids = set()
+            # 1. Search by document_id
+            if document_id:
+                try:
+                    r1 = self.collection.get(where={"document_id": document_id})
+                    if r1 and r1.get("ids"):
+                        for cid, meta in zip(r1["ids"], r1["metadatas"]):
+                            m_owner = meta.get("owner_id", "legacy_dev_owner")
+                            if owner_id is None or m_owner == owner_id:
+                                chunk_ids.add(cid)
+                except Exception:
+                    pass
 
-            chunk_ids = []
-            if results and results.get("ids"):
-                for cid, meta in zip(results["ids"], results["metadatas"]):
-                    m_owner = meta.get("owner_id", "legacy_dev_owner")
-                    if owner_id is None or m_owner == owner_id:
-                        chunk_ids.append(cid)
+            # 2. Search by document_name
+            name_to_check = document_name or document_id
+            if name_to_check:
+                try:
+                    r2 = self.collection.get(where={"document_name": name_to_check})
+                    if r2 and r2.get("ids"):
+                        for cid, meta in zip(r2["ids"], r2["metadatas"]):
+                            m_owner = meta.get("owner_id", "legacy_dev_owner")
+                            if owner_id is None or m_owner == owner_id:
+                                chunk_ids.add(cid)
+                except Exception:
+                    pass
 
             if chunk_ids:
-                self.collection.delete(ids=chunk_ids)
-                logger.info(f"Deleted {len(chunk_ids)} vector chunks for document_id '{document_id}' (owner '{owner_id}') from ChromaDB.")
+                self.collection.delete(ids=list(chunk_ids))
+                logger.info(f"Deleted {len(chunk_ids)} vector chunks for document_id '{document_id}' / '{name_to_check}' (owner '{owner_id}') from ChromaDB.")
             return len(chunk_ids)
         except Exception as e:
             logger.error(f"Error deleting vector chunks for document_id '{document_id}': {e}")
@@ -265,8 +295,11 @@ class VectorDBManager:
 
 
     def reset_collection(self):
-        self.client.delete_collection(name=settings.COLLECTION_NAME)
-        self.collection = self.client.get_or_create_collection(
+        try:
+            self.client.delete_collection(name=settings.COLLECTION_NAME)
+        except Exception:
+            pass
+        self._collection = self.client.get_or_create_collection(
             name=settings.COLLECTION_NAME,
             metadata={"hnsw:space": "cosine"}
         )

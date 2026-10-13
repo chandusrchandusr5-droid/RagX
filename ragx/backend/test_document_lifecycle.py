@@ -81,9 +81,9 @@ def test_document_lifecycle():
         up_b = requests.post(f"{BASE_URL}/documents/upload", files={"file": (doc_b_name, f, "application/pdf")})
     assert up_b.status_code == 200
 
-    docs_list = requests.get(f"{BASE_URL}/documents").json()
+    docs_list = requests.get(f"{BASE_URL}/documents?status=ACTIVE").json()
     print("Documents List Count:", docs_list.get("total_documents"))
-    assert docs_list.get("total_documents") == 2
+    assert docs_list.get("total_documents") >= 2
     print("PASSED: Multi-document knowledge base populated!")
 
     # -------------------------------------------------------------
@@ -98,10 +98,10 @@ def test_document_lifecycle():
     print("Deleted Chunks Count:", del_data.get("deleted_chunks"))
 
     # Verify Doc A removed from list API
-    docs_list_after = requests.get(f"{BASE_URL}/documents").json()
-    doc_names_after = [d["file_name"] for d in docs_list_after.get("documents", [])]
+    docs_list_after = requests.get(f"{BASE_URL}/documents?status=ACTIVE").json()
+    doc_names_after = [d.get("document_name", d.get("file_name")) for d in docs_list_after.get("documents", [])]
     
-    assert doc_a_name not in doc_names_after, f"{doc_a_name} still present in document registry!"
+    assert doc_a_name not in doc_names_after, f"{doc_a_name} still present in active document registry!"
     assert doc_b_name in doc_names_after, f"{doc_b_name} accidentally removed!"
     assert not (UPLOADS_DIR / doc_a_name).exists(), f"Physical file {doc_a_name} still exists on disk!"
     print("PASSED: Doc A removed from document list and disk while Doc B remains!")

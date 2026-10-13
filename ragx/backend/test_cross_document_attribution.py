@@ -42,16 +42,18 @@ def test_cross_document_attribution():
     print(" RAGX CROSS-DOCUMENT SOURCE ATTRIBUTION SUITE     ")
     print("==================================================")
 
-    # Clear previous uploads & vector collection for clean isolated test
+    # Clear ONLY test-specific uploads & vector chunks for clean isolated test
+    test_files = ["Chandu_CSE_Profile.pdf", "Chandu_EEE_Profile.pdf"]
     try:
         from app.core.vector_db import vector_db
-        vector_db.collection.delete(where={"chunk_id": {"$ne": ""}})
+        for fname in test_files:
+            vector_db.delete_document_chunks_by_id(fname, document_name=fname)
     except Exception:
         pass
 
-
-    for f in UPLOADS_DIR.glob("*"):
-        if f.is_file():
+    for fname in test_files:
+        f = UPLOADS_DIR / fname
+        if f.exists():
             try:
                 f.unlink()
             except Exception:
@@ -115,7 +117,16 @@ def test_cross_document_attribution():
     print("\n==================================================")
     print(" CROSS-DOCUMENT SOURCE ATTRIBUTION SUITE PASSED!  ")
     print("==================================================")
+    
+    # Clean up test documents so they do not pollute general query index
+    for fname in test_files:
+        try:
+            requests.delete(f"{BASE_URL}/documents/{fname}")
+            requests.delete(f"{BASE_URL}/documents/{fname}/permanent")
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     time.sleep(1)
     test_cross_document_attribution()
+
